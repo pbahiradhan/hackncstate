@@ -59,7 +59,9 @@ export async function searchSources(query: string, limit = 5): Promise<Source[]>
       return [];
     }
 
-    const data = await res.json();
+    // In TS 5.5+ / stricter lib.dom typings, Response.json() returns `unknown`.
+    // We only need a minimal shape here.
+    const data = (await res.json()) as { items?: any[] };
     return (data.items ?? []).map((item: any): Source => {
       const hostname = new URL(item.link).hostname;
       return {
