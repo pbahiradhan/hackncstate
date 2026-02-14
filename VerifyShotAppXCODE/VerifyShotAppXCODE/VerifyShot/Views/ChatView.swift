@@ -61,7 +61,7 @@ struct ChatView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
-                        appState.showChat = false
+                        appState.clearChat()
                     }
                     .foregroundColor(.vsOrange)
                 }

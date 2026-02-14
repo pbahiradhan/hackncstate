@@ -7,7 +7,7 @@ final class APIClient {
     static let shared = APIClient()
 
     // ⚠️  CHANGE THIS to your deployed Vercel URL
-    private let baseURL = "https://YOUR_VERCEL_APP.vercel.app"
+    private let baseURL = "https://hackncstate.vercel.app"
 
     private init() {}
 
@@ -30,13 +30,19 @@ final class APIClient {
         return result
     }
 
-    // MARK: - Chat
+    // MARK: - Chat (standard or deep_research mode)
 
-    func chat(jobId: String, message: String, context: String) async throws -> String {
+    func chat(
+        jobId: String,
+        message: String,
+        context: String,
+        mode: String = "standard"
+    ) async throws -> String {
         let body: [String: Any] = [
             "jobId": jobId,
             "message": message,
-            "context": context
+            "context": context,
+            "mode": mode
         ]
         let data = try await post(path: "/api/chat", body: body)
         let resp = try JSONDecoder().decode(ChatResponse.self, from: data)

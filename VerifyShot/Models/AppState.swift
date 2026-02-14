@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Photos
 
 // MARK: - Central observable state for the app
 
@@ -30,6 +31,9 @@ final class AppState: ObservableObject {
     // History
     @Published var history: [AnalysisResult] = []
 
+    // Screenshot notification banner
+    @Published var showScreenshotBanner = false
+
     enum Tab: Int {
         case home = 0
         case results = 1
@@ -48,6 +52,7 @@ final class AppState: ObservableObject {
 
         Task {
             do {
+                progressText = "Analyzing with AI…"
                 let result = try await api.analyzeImage(image)
                 self.analysisResult = result
                 self.imageUrl = result.imageUrl
@@ -62,17 +67,69 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Analyze Latest Screenshot (from notification tap)
+
+    func analyzeLatestScreenshot() async {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else {
+            print("Photo library not authorized")
+            return
+        }
+
+        let opts = PHFetchOptions()
+        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        opts.fetchLimit = 1
+        opts.predicate = NSPredicate(
+            format: "mediaSubtype == %d",
+            PHAssetMediaSubtype.photoScreenshot.rawValue
+        )
+
+        let result = PHAsset.fetchAssets(with: .image, options: opts)
+        guard let asset = result.firstObject else {
+            print("No screenshot found")
+            return
+        }
+
+        // Load the image
+        let image = await loadImage(from: asset)
+        guard let screenshot = image else {
+            print("Failed to load screenshot image")
+            return
+        }
+
+        // Auto-analyze
+        analyzeScreenshot(screenshot)
+    }
+
+    private func loadImage(from asset: PHAsset) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.isSynchronous = false
+            options.isNetworkAccessAllowed = true
+
+            let targetSize = CGSize(width: 1080, height: 1920)
+
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: targetSize,
+                contentMode: .aspectFit,
+                options: options
+            ) { image, _ in
+                continuation.resume(returning: image)
+            }
+        }
+    }
+
     // MARK: - Text Query (inline chat — no sheet)
 
     func startTextQuery(_ text: String) {
-        // Add user message
         let userMsg = ChatMessage(role: .user, content: text)
         chatMessages.append(userMsg)
         isChatting = true
 
         let mode = isDeepResearchMode ? "deep_research" : "standard"
 
-        // Build context if analysis exists
         let context: String
         if let result = analysisResult {
             context = result.claims.map { claim in

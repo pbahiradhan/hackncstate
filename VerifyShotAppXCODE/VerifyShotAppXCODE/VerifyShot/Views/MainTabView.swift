@@ -27,35 +27,25 @@ struct MainTabView: View {
             }
             .tint(.vsOrange)
 
-            // Custom bottom bar (matches screenshot)
+            // Custom bottom bar
             CustomTabBar(selected: $appState.selectedTab)
         }
         .edgesIgnoringSafeArea(.bottom)
-        // Centralized sheets — accessible from any tab
-        .sheet(isPresented: $appState.showChat) {
-            ChatView()
-                .environmentObject(appState)
-        }
-        .sheet(isPresented: $appState.showDeepResearch) {
-            DeepResearchView()
-                .environmentObject(appState)
-        }
     }
 }
 
-// MARK: - Custom Tab Bar (matches screenshot design)
+// MARK: - Custom Tab Bar
 
 struct CustomTabBar: View {
     @Binding var selected: AppState.Tab
 
     var body: some View {
         HStack {
-            // Home
             Spacer()
             tabButton(icon: "house.fill", label: "Home", tab: .home)
             Spacer()
 
-            // Center search button
+            // Center search button → results
             Button {
                 selected = .results
             } label: {
@@ -73,7 +63,6 @@ struct CustomTabBar: View {
 
             Spacer()
 
-            // History
             tabButton(icon: "clock.fill", label: "History", tab: .history)
             Spacer()
         }
@@ -121,7 +110,7 @@ struct EmptyResultsView: View {
     }
 }
 
-// MARK: - History View (real data)
+// MARK: - History View
 
 struct HistoryView: View {
     @EnvironmentObject var appState: AppState
@@ -143,7 +132,7 @@ struct HistoryView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 120) // room for tab bar
+                    .padding(.bottom, 120)
                 }
             }
         }
@@ -172,17 +161,13 @@ struct HistoryRow: View {
     let result: AnalysisResult
 
     private var formattedDate: String {
-        // Parse ISO date and show short format
         let iso = result.generatedAt
-        if iso.count >= 10 {
-            return String(iso.prefix(10))
-        }
+        if iso.count >= 10 { return String(iso.prefix(10)) }
         return iso
     }
 
     var body: some View {
         HStack(spacing: 14) {
-            // Trust score circle
             ZStack {
                 Circle()
                     .fill(Color.forTrustScore(result.aggregateTrustScore).opacity(0.15))
@@ -192,9 +177,8 @@ struct HistoryRow: View {
                     .foregroundColor(.forTrustScore(result.aggregateTrustScore))
             }
 
-            // Claim text + metadata
             VStack(alignment: .leading, spacing: 4) {
-                Text(result.claims.first?.text ?? result.summary.prefix(60) + "…")
+                Text(result.claims.first?.text ?? "Analysis")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.vsNavy)
                     .lineLimit(2)
@@ -203,10 +187,8 @@ struct HistoryRow: View {
                     Text(result.trustLabel)
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.forTrustScore(result.aggregateTrustScore))
-
                     Text("•")
                         .foregroundColor(.vsDarkGray)
-
                     Text(formattedDate)
                         .font(.caption)
                         .foregroundColor(.vsDarkGray)

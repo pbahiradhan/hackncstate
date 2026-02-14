@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var showAttachmentMenu = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage? // attached but not yet sent
+    @State private var showScreenshotAlert = false
     @FocusState private var isSearchFocused: Bool
 
     private var isInChatMode: Bool {
@@ -48,11 +49,22 @@ struct HomeView: View {
             if appState.isAnalyzing {
                 loadingOverlay
             }
+
+            // Screenshot detected banner
+            if showScreenshotAlert {
+                screenshotDetectedBanner
+            }
         }
         .navigationBarHidden(true)
         .onChange(of: detector.latestScreenshot) { _, newImage in
             if let img = newImage {
-                appState.analyzeScreenshot(img)
+                // Show the in-app banner instead of auto-analyzing
+                pendingImage = img
+                showScreenshotAlert = true
+                // Auto-dismiss after 5 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    showScreenshotAlert = false
+                }
             }
         }
         .onChange(of: selectedPhotoItem) { _, item in
@@ -67,6 +79,66 @@ struct HomeView: View {
             DeepResearchView()
                 .environmentObject(appState)
         }
+    }
+
+    // MARK: - Screenshot Detected Banner
+
+    private var screenshotDetectedBanner: some View {
+        VStack {
+            HStack(spacing: 12) {
+                Image(systemName: "camera.viewfinder")
+                    .font(.title2)
+                    .foregroundColor(.white)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Screenshot Detected!")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text("Tap to analyze with AI")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.8))
+                }
+
+                Spacer()
+
+                Button {
+                    showScreenshotAlert = false
+                    if let img = pendingImage {
+                        appState.analyzeScreenshot(img)
+                        pendingImage = nil
+                    }
+                } label: {
+                    Text("Analyze")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.vsNavy)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.white)
+                        .clipShape(Capsule())
+                }
+
+                Button {
+                    showScreenshotAlert = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.vsNavy)
+                    .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+
+            Spacer()
+        }
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .animation(.spring(response: 0.4), value: showScreenshotAlert)
+        .zIndex(100)
     }
 
     // MARK: - Nav Bar
