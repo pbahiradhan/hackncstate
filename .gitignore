@@ -1,0 +1,27 @@
+node_modules/
+.env
+.vercel
+dist/
+*.log
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
+*.xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# iOS
+*.ipa
+*.dSYM.zip
+*.dSYM
+DerivedData/
+build/
