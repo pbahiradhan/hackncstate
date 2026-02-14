@@ -42,10 +42,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ reply });
   } catch (err: any) {
     console.error("[/api/chat] Error:", err.message);
-    console.error(err.stack);
+    console.error("[/api/chat] Stack:", err.stack);
+    
+    // Provide more helpful error messages
+    let errorMsg = err.message || "Chat failed";
+    let hint = "Check Vercel function logs for details";
+    
+    if (errorMsg.includes("BACKBOARD_API_KEY")) {
+      hint = "Set BACKBOARD_API_KEY in Vercel → Settings → Environment Variables";
+    } else if (errorMsg.includes("credits") || errorMsg.includes("quota")) {
+      hint = "Check your Backboard.io account has credits available";
+    } else if (errorMsg.includes("assistant")) {
+      hint = "Backboard assistant creation failed. Check API key and account status.";
+    } else if (errorMsg.includes("thread")) {
+      hint = "Backboard thread creation failed. Check API key.";
+    }
+    
     return res.status(500).json({
-      error: err.message || "Chat failed",
-      hint: "Check Vercel function logs for details",
+      error: errorMsg,
+      hint,
+      details: process.env.NODE_ENV === "development" ? err.stack : undefined,
     });
   }
 }

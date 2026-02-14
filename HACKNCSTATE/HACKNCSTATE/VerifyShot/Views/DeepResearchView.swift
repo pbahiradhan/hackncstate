@@ -4,6 +4,7 @@ import SwiftUI
 
 struct DeepResearchView: View {
     @EnvironmentObject var appState: AppState
+    @State private var hasAppeared = false
 
     var body: some View {
         NavigationStack {
@@ -17,6 +18,9 @@ struct DeepResearchView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         // ── Image Card with verdict badge ──
                         imageCard(result)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .scaleEffect(hasAppeared ? 1 : 0.95)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: hasAppeared)
 
                         // ── Title & Meta ──
                         VStack(alignment: .leading, spacing: 6) {
@@ -36,29 +40,50 @@ struct DeepResearchView: View {
                             }
                         }
                         .padding(.horizontal, 20)
+                        .opacity(hasAppeared ? 1 : 0)
+                        .offset(y: hasAppeared ? 0 : 10)
+                        .animation(.easeOut(duration: 0.3), value: hasAppeared)
 
                         // ── Key Takeaways ──
                         keyTakeaways(claim)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.easeOut(duration: 0.4).delay(0.1), value: hasAppeared)
 
                         // ── Timeline & Context ──
                         timelineSection(result)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.easeOut(duration: 0.4).delay(0.2), value: hasAppeared)
 
                         // ── Bias Detection ──
                         BiasSlider(bias: claim.biasSignals)
                             .padding(.horizontal, 20)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.easeOut(duration: 0.4).delay(0.3), value: hasAppeared)
 
                         // ── Model Consensus ──
                         if !claim.modelVerdicts.isEmpty {
                             ModelConsensusSection(verdicts: claim.modelVerdicts)
                                 .padding(.horizontal, 20)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.easeOut(duration: 0.4).delay(0.4), value: hasAppeared)
                         }
 
                         // ── Sources ──
                         sourcesSection(claim.sources)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : 20)
+                            .animation(.easeOut(duration: 0.4).delay(0.5), value: hasAppeared)
 
                         // ── All Claims ──
                         if result.claims.count > 1 {
                             allClaimsSection(result.claims)
+                                .opacity(hasAppeared ? 1 : 0)
+                                .offset(y: hasAppeared ? 0 : 20)
+                                .animation(.easeOut(duration: 0.4).delay(0.6), value: hasAppeared)
                         }
 
                         Spacer(minLength: 120)
@@ -66,6 +91,12 @@ struct DeepResearchView: View {
                     .padding(.top, 8)
                 }
                 .background(Color.vsBackground)
+                .animation(.easeInOut(duration: 0.3), value: result.claims.count)
+                .onAppear {
+                    withAnimation {
+                        hasAppeared = true
+                    }
+                }
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
