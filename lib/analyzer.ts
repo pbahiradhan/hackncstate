@@ -41,82 +41,80 @@ export async function analyzeImage(
   }
   console.log(`[Orchestrator][${jobId}] ✅ OCR extracted ${ocrText.length} chars`);
 
-  // ── Step 2: Extract Claims + Search Sources + OCR Summary (all parallel, ~3s) ──
-  console.log(`[Orchestrator][${jobId}] Step 2: Extracting claims, searching sources, and generating summary (parallel)…`);
+  // ── Step 2: Extract Claims + OCR Summary (parallel, ~2s) ──
+  console.log(`[Orchestrator][${jobId}] Step 2: Extracting claims and generating summary (parallel)…`);
   
   let extractedClaims: Array<{ text: string }> = [];
-  let sources: Source[] = [];
   let ocrSummary: string = "";
+  let sources: Source[] = []; // Will be populated in Step 3 after searching per claim
   
   try {
-    // Extract first meaningful sentence for initial search
-    const sentences = ocrText.split(/[.!?\n]/).map(s => s.trim()).filter(s => s.length > 15);
-    const primaryQuery = sentences[0] || ocrText.slice(0, 200);
-    
-    // Run claim extraction + AI-powered search + OCR summary — ALL in parallel
-    const [claimsResult, primarySources, summaryResult] = await Promise.all([
+    // Run claim extraction + OCR summary — ALL in parallel
+    const [claimsResult, summaryResult] = await Promise.all([
       extractClaims(ocrText).catch((err: any) => {
         console.warn(`[Orchestrator][${jobId}] Claim extraction failed:`, err.message);
+        const sentences = ocrText.split(/[.!?\n]/).map(s => s.trim()).filter(s => s.length > 15);
         const firstSentence = sentences[0];
         return firstSentence && firstSentence.length > 10
           ? [{ text: firstSentence }]
           : [{ text: ocrText.slice(0, 200) }];
       }),
-      // Uses Perplexity via Backboard (built-in web search, no Google API needed)
-      searchCombined(primaryQuery, 8).catch((err: any) => {
-        console.warn(`[Orchestrator][${jobId}] Primary search failed:`, err.message);
-        return [];
-      }),
       // Generate OCR-based summary (describes what the screenshot says)
       generateOCRSummary(ocrText).catch((err: any) => {
         console.warn(`[Orchestrator][${jobId}] OCR summary failed:`, err.message);
         // Fallback: use first 2 sentences of OCR text
+        const sentences = ocrText.split(/[.!?\n]/).map(s => s.trim()).filter(s => s.length > 15);
         return sentences.slice(0, 2).join(". ") + (sentences.length > 0 ? "." : "");
       }),
     ]);
     
     extractedClaims = claimsResult;
-    sources = primarySources;
     ocrSummary = summaryResult;
-    
-    // If primary search returned few results, run additional searches using extracted claims
-    if (sources.length < 3 && extractedClaims.length > 0) {
-      console.log(`[Orchestrator][${jobId}] Running additional searches for ${extractedClaims.length} claim(s)…`);
-      const additionalSearches = await Promise.all(
-        extractedClaims.slice(0, 2).map(claim =>
-          searchCombined(claim.text, 5).catch(() => [] as Source[])
-        )
-      );
-      
-      // Merge & deduplicate sources
-      const seenUrls = new Set(sources.map(s => s.url));
-      for (const results of additionalSearches) {
-        for (const src of results) {
-          if (!seenUrls.has(src.url)) {
-            seenUrls.add(src.url);
-            sources.push(src);
-          }
-        }
-      }
-      console.log(`[Orchestrator][${jobId}] After additional searches: ${sources.length} total source(s)`);
-    }
   } catch (err: any) {
     console.error(`[Orchestrator][${jobId}] Step 2 failed:`, err.message);
     throw new Error(`Analysis failed: ${err.message}`);
   }
 
-  console.log(`[Orchestrator][${jobId}] ✅ Extracted ${extractedClaims.length} claim(s), found ${sources.length} source(s)`);
+  console.log(`[Orchestrator][${jobId}] ✅ Extracted ${extractedClaims.length} claim(s)`);
 
-  // ── Step 3: Quality Gate (local, 0 API calls) ──
-  console.log(`[Orchestrator][${jobId}] Step 3: Quality gate check…`);
+  // ── Step 3: Search Sources Per Claim + Multi-Model Verification (2 models × N claims, all parallel, ~5-8s) ──
+  console.log(`[Orchestrator][${jobId}] Step 3: Searching sources per claim, then verifying (${extractedClaims.length} claim(s) × 2 models, parallel)…`);
   
-  // Relaxed quality gate: credibility >= 0.6 and only 2 required
-  const highQualitySources = sources.filter(s => (s.credibilityScore || 0) >= 0.6);
-  const hasMinimumSources = highQualitySources.length >= 2;
+  // Search sources SPECIFIC to each claim (not shared) — ensures accuracy
+  const claimSourcesAndVerifications = await Promise.all(
+    extractedClaims.map(async (claim) => {
+      // Search for sources relevant to THIS specific claim
+      const claimSources = await searchCombined(claim.text, 6).catch((err: any) => {
+        console.warn(`[Orchestrator][${jobId}] Source search for claim "${claim.text.slice(0, 50)}..." failed:`, err.message);
+        return [] as Source[];
+      });
+      
+      // Verify this claim against its own sources
+      const verifications = await verifyClaimMultiModel(claim.text, claimSources);
+      
+      return { claim, sources: claimSources, verifications };
+    })
+  );
   
-  if (!hasMinimumSources && sources.length === 0) {
-    // Only block if we got ZERO sources at all
-    console.log(`[Orchestrator][${jobId}] ⚠️ Quality gate failed: no sources found at all`);
+  // Extract verifications and aggregate all sources for bias detection
+  const allVerifications: ModelVerification[][] = claimSourcesAndVerifications.map(r => r.verifications);
+  const allSources: Source[] = [];
+  const seenUrls = new Set<string>();
+  for (const { sources: claimSources } of claimSourcesAndVerifications) {
+    for (const src of claimSources) {
+      if (!seenUrls.has(src.url)) {
+        seenUrls.add(src.url);
+        allSources.push(src);
+      }
+    }
+  }
+  
+  // Update sources for bias detection and final result
+  sources = allSources;
+  
+  // Quality gate: check if we have any sources at all
+  if (sources.length === 0) {
+    console.log(`[Orchestrator][${jobId}] ⚠️ Quality gate failed: no sources found for any claim`);
     console.log(`[Orchestrator][${jobId}] ⚠️ Check BACKBOARD_API_KEY is set (for Perplexity search)`);
     
     // Return "unable to verify" result
@@ -150,25 +148,11 @@ export async function analyzeImage(
     console.log(`[Orchestrator][${jobId}] ⚠️ Returning "unable to verify" result`);
     return result;
   }
-  
-  // If we have some sources but below threshold, proceed anyway with a warning
-  if (!hasMinimumSources) {
-    console.log(`[Orchestrator][${jobId}] ⚠️ Below ideal threshold (${highQualitySources.length} high-quality of ${sources.length} total) — proceeding with available sources`);
-  } else {
-    console.log(`[Orchestrator][${jobId}] ✅ Quality gate passed: ${highQualitySources.length} high-quality sources out of ${sources.length} total`);
-  }
 
-  // ── Step 4: Multi-Model Verification (2 models × N claims, all parallel, ~5-8s) ──
-  console.log(`[Orchestrator][${jobId}] Step 4: Multi-model verification (${extractedClaims.length} claim(s) × 2 models, parallel)…`);
-  
-  const allVerifications: ModelVerification[][] = await Promise.all(
-    extractedClaims.map((claim) => verifyClaimMultiModel(claim.text, sources))
-  );
+  console.log(`[Orchestrator][${jobId}] ✅ Multi-model verification complete — ${sources.length} total source(s) found`);
 
-  console.log(`[Orchestrator][${jobId}] ✅ Multi-model verification complete`);
-
-  // ── Step 5: Bias Detection — 3 parallel calls (1 per perspective) ──
-  console.log(`[Orchestrator][${jobId}] Step 5: Bias detection (3 perspectives, parallel)…`);
+  // ── Step 4: Bias Detection — 3 parallel calls (1 per perspective) ──
+  console.log(`[Orchestrator][${jobId}] Step 4: Bias detection (3 perspectives, parallel)…`);
   
   let biasSignals: BiasSignals;
   try {
@@ -186,11 +170,10 @@ export async function analyzeImage(
 
   console.log(`[Orchestrator][${jobId}] ✅ Bias: ${biasSignals.overallBias}, sens: ${biasSignals.sensationalism}`);
 
-  // ── Step 6: Synthesize Results (local computation, 0 API calls) ──
-  console.log(`[Orchestrator][${jobId}] Step 6: Synthesizing results…`);
+  // ── Step 5: Synthesize Results (local computation, 0 API calls) ──
+  console.log(`[Orchestrator][${jobId}] Step 5: Synthesizing results…`);
   
-  const claims: Claim[] = extractedClaims.map((extracted, claimIdx) => {
-    const verifications = allVerifications[claimIdx];
+  const claims: Claim[] = claimSourcesAndVerifications.map(({ claim: extracted, sources: claimSources, verifications }, claimIdx) => {
     
     // Calculate real consensus (2 models: GPT-4o + Claude 3.5 Sonnet)
     const trueVerdicts = verifications.map(v => v.verdict);
@@ -221,10 +204,10 @@ export async function analyzeImage(
       reasoning: v.reasoning,
     }));
     
-    // Calculate trust score with model agreement
+    // Calculate trust score with model agreement (using claim-specific sources)
     const bp = biasPenalty(biasSignals);
     const modelAgreement = verifications.filter(v => v.verdict === finalVerdict).length / verifications.length;
-    const score = calculateTrustScore(sources, avgConfidence, bp, modelAgreement);
+    const score = calculateTrustScore(claimSources, avgConfidence, bp, modelAgreement);
     
     // Generate explanation from model reasoning
     const agreeCount = verifications.filter(v => v.verdict === finalVerdict).length;
@@ -248,7 +231,7 @@ export async function analyzeImage(
       verdict: finalVerdict,
       trustScore: score,
       explanation: mainExplanation,
-      sources: sources.slice(0, 5),
+      sources: claimSources.slice(0, 5), // Use claim-specific sources
       biasSignals,
       modelVerdicts,
     };

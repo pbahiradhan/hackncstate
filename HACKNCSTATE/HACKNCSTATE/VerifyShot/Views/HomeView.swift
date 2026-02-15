@@ -698,29 +698,29 @@ struct HomeView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                HStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle.fill")
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.white)
+                    .font(.title3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Analysis Failed")
+                        .font(.headline)
                         .foregroundColor(.white)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(3)
+                }
+
+                Spacer()
+
+                Button {
+                    appState.analysisError = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
                         .font(.title3)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Analysis Failed")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
-                            .lineLimit(3)
-                    }
-
-                    Spacer()
-
-                    Button {
-                        appState.analysisError = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(.white.opacity(0.7))
                     }
                 }
 
@@ -815,8 +815,8 @@ struct HomeView: View {
             } catch {
                 print("[HomeView] Photo loading error: \(error.localizedDescription)")
                 try? await Task.sleep(nanoseconds: 200_000_000)
-                if let data = try? await item.loadTransferable(type: Data.self),
-                   let image = UIImage(data: data) {
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let image = UIImage(data: data) {
                     await MainActor.run {
                         appState.analyzeScreenshot(image)
                     }
