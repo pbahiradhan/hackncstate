@@ -474,6 +474,7 @@ export async function chatAboutJob(
 
     if (toolOutputs.length > 0) {
       try {
+        console.log(`[Backboard] Submitting ${toolOutputs.length} tool output(s) for run ${resp.run_id}…`);
         const toolRes = await fetch(`${BASE_URL}/threads/${threadId}/tool-outputs`, {
           method: "POST",
           headers: getHeaders(),
@@ -488,10 +489,73 @@ export async function chatAboutJob(
           throw new Error(`Failed to submit tool outputs: ${toolRes.status} - ${errorText}`);
         }
 
-        const finalResp = (await toolRes.json()) as any;
-        return finalResp.content || "Analysis complete but no text was returned.";
+        const toolSubmitResp = (await toolRes.json()) as any;
+        console.log(`[Backboard] Tool outputs submitted. Response status: ${toolSubmitResp.status}, has content: ${!!toolSubmitResp.content}`);
+
+        // Check if we got content directly from tool submission
+        if (toolSubmitResp.content && toolSubmitResp.status !== "REQUIRES_ACTION") {
+          console.log(`[Backboard] Final response received immediately after tool submission`);
+          return toolSubmitResp.content;
+        }
+
+        // If still processing, wait a bit and then fetch the latest message from the thread
+        console.log(`[Backboard] Waiting for Backboard to process tool outputs and generate response…`);
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds for processing
+
+        // Fetch the latest messages from the thread to get the final response
+        try {
+          const messagesRes = await fetch(`${BASE_URL}/threads/${threadId}/messages`, {
+            method: "GET",
+            headers: getHeaders(),
+          });
+
+          if (messagesRes.ok) {
+            const messagesData = (await messagesRes.json()) as any;
+            // Backboard API might return messages in different formats
+            const messages = Array.isArray(messagesData) 
+              ? messagesData 
+              : (messagesData.messages || messagesData.data || []);
+            
+            // Find the most recent assistant message (should be the final response)
+            const assistantMessages = messages
+              .filter((m: any) => m.role === "assistant" || m.role === "ai")
+              .sort((a: any, b: any) => {
+                // Sort by timestamp or index (most recent first)
+                const aTime = a.created_at || a.timestamp || 0;
+                const bTime = b.created_at || b.timestamp || 0;
+                return bTime - aTime;
+              });
+
+            if (assistantMessages.length > 0) {
+              const latestMessage = assistantMessages[0];
+              if (latestMessage.content) {
+                console.log(`[Backboard] Retrieved final response from thread messages`);
+                return latestMessage.content;
+              }
+            }
+          } else {
+            console.warn(`[Backboard] Failed to fetch messages: ${messagesRes.status}`);
+          }
+        } catch (fetchErr: any) {
+          console.warn(`[Backboard] Error fetching messages:`, fetchErr.message);
+        }
+
+        // Fallback: if tool submission response has any content, use it
+        if (toolSubmitResp.content) {
+          console.log(`[Backboard] Using content from tool submission response`);
+          return toolSubmitResp.content;
+        }
+
+        // Last resort: check if there's a message in the response
+        if (toolSubmitResp.message?.content) {
+          console.log(`[Backboard] Using content from tool submission message`);
+          return toolSubmitResp.message.content;
+        }
+
+        throw new Error("Deep research completed tool execution but no final response was generated. The assistant may need more time to process the search results.");
       } catch (e: any) {
-        console.error("[Backboard] Tool output submission failed:", e.message);
+        console.error("[Backboard] Tool output submission/processing failed:", e.message);
+        throw new Error(`Deep research failed: ${e.message}`);
       }
     }
   }

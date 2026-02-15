@@ -5,7 +5,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { chatAboutJob } from "../lib/backboardHttp";
 
-export const maxDuration = 60;
+// Increase timeout for deep research mode (can take longer with tool calls)
+export const maxDuration = 120; // 2 minutes for deep research
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS
