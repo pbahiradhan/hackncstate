@@ -81,7 +81,20 @@ export async function searchSources(query: string, limit = 5): Promise<Source[]>
     const res = await fetch(url);
     if (!res.ok) {
       const errText = await res.text();
-      console.error(`[Search] Google API error ${res.status}:`, errText);
+      console.error(`[Search] Google API error ${res.status}: ${errText}`);
+      // Parse error for specific issues
+      try {
+        const errJson = JSON.parse(errText);
+        const reason = errJson?.error?.errors?.[0]?.reason;
+        const message = errJson?.error?.message;
+        if (reason === "dailyLimitExceeded" || reason === "rateLimitExceeded") {
+          console.error(`[Search] ⚠️ RATE LIMITED: ${message}. Free tier = 100 queries/day. Wait 24h or upgrade to paid.`);
+        } else if (reason === "keyInvalid") {
+          console.error(`[Search] ⚠️ INVALID KEY: ${message}. Check GOOGLE_SEARCH_API_KEY in Vercel.`);
+        } else if (res.status === 403) {
+          console.error(`[Search] ⚠️ FORBIDDEN: Custom Search JSON API may not be enabled. Go to console.cloud.google.com → APIs & Services → Library → search "Custom Search JSON API" → Enable.`);
+        }
+      } catch { /* ignore parse error */ }
       return [];
     }
 

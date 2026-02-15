@@ -5,12 +5,14 @@ import UserNotifications
 @main
 struct VerifyShotApp: App {
     @StateObject private var appState = AppState()
+    @StateObject private var screenshotDetector = ScreenshotDetector()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
         WindowGroup {
             MainTabView()
                 .environmentObject(appState)
+                .environmentObject(screenshotDetector)
                 .onAppear {
                     // Request photo library access
                     PHPhotoLibrary.requestAuthorization(for: .readWrite) { _ in }
@@ -21,6 +23,19 @@ struct VerifyShotApp: App {
 
                     // Pass appState to AppDelegate for notification handling
                     appDelegate.appState = appState
+
+                    // Start listening for screenshots
+                    screenshotDetector.startListening()
+                }
+                // When user taps the push notification, pendingAnalysisFromNotification
+                // becomes true and ScreenshotDetector fetches the latest screenshot.
+                // Once latestScreenshot updates, auto-analyze it.
+                .onChange(of: screenshotDetector.pendingAnalysisFromNotification) { pending in
+                    if pending, let img = screenshotDetector.latestScreenshot {
+                        screenshotDetector.pendingAnalysisFromNotification = false
+                        screenshotDetector.latestScreenshot = nil
+                        appState.analyzeScreenshot(img)
+                    }
                 }
         }
     }
@@ -50,7 +65,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         completionHandler([.banner, .sound])
     }
 
-    // MARK: - Handle notification tap
+    // MARK: - Handle notification tap → auto-analyze
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -61,7 +76,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let categoryIdentifier = response.notification.request.content.categoryIdentifier
 
         if categoryIdentifier == "SCREENSHOT_DETECTED" {
-            // User tapped the notification or "Analyze Now" action
             if actionIdentifier == UNNotificationDefaultActionIdentifier ||
                actionIdentifier == "ANALYZE_ACTION" {
                 Task { @MainActor in

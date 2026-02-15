@@ -5,7 +5,7 @@ import PhotosUI
 
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var detector = ScreenshotDetector()
+    @EnvironmentObject var detector: ScreenshotDetector
     @State private var showAttachmentMenu = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
@@ -44,16 +44,17 @@ struct HomeView: View {
             }
         }
         .navigationBarHidden(true)
-        .onChange(of: detector.latestScreenshot) { _, newImage in
+        .onChange(of: detector.latestScreenshot) { newImage in
             if let img = newImage {
                 pendingImage = img
                 showScreenshotAlert = true
+                detector.latestScreenshot = nil
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                     showScreenshotAlert = false
                 }
             }
         }
-        .onChange(of: selectedPhotoItem) { _, item in
+        .onChange(of: selectedPhotoItem) { item in
             if let item {
                 loadPhoto(from: item)
             }
