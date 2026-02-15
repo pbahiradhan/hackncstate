@@ -84,7 +84,3 @@ Trust Score =
 - Full source code available on GitHub  
 - Built for hackathon use and live demo  
 
----
-
-## Development Notes
-System architecture, user flow, and trust scoring logic were designed by the project owner. AI-assisted development tools were used to accelerate implementation and debugging.
