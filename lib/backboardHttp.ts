@@ -343,34 +343,116 @@ Analyze this content and return the JSON response.`;
   // 2. Fix any weird encoding issues
   // 3. Remove any text before the first {
   
-  // Find the first { and last }
-  const firstBrace = content.indexOf('{');
-  const lastBrace = content.lastIndexOf('}');
+  // ROBUST JSON EXTRACTION: Handle any format Backboard returns
+  // Strategy: Find the JSON object, extract it, and clean it
   
+  // Step 1: Find the first { and last }
+  let firstBrace = content.indexOf('{');
+  let lastBrace = content.lastIndexOf('}');
+  
+  // If no braces found, the content might be a string representation
+  // Try to find JSON-like patterns
   if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-    console.error("[Backboard] ⚠️ No valid JSON braces found");
-    console.error("[Backboard] Content:", content);
-    throw new Error("Backboard response does not contain valid JSON structure");
+    console.log("[Backboard] No braces found, trying alternative extraction...");
+    // Look for patterns like {'\\n  "claims"'} - this is a Python string representation
+    const jsonMatch = content.match(/\{[^}]*"claims"[^}]*\}/);
+    if (jsonMatch) {
+      console.log("[Backboard] Found JSON-like pattern:", jsonMatch[0]);
+      content = jsonMatch[0];
+      firstBrace = 0;
+      lastBrace = content.length - 1;
+    } else {
+      console.error("[Backboard] ⚠️ No valid JSON structure found");
+      console.error("[Backboard] Content:", content);
+      throw new Error("Backboard response does not contain valid JSON structure");
+    }
   }
   
-  // Extract just the JSON part
+  // Step 2: Extract the JSON part
   let jsonContent = content.substring(firstBrace, lastBrace + 1);
   
-  // Try to fix common JSON formatting issues
-  // Remove any escaped quotes that shouldn't be there
-  // But be careful - we don't want to break valid escaped quotes inside strings
-  // For now, just log what we have
-  console.log("[Backboard] Extracted JSON (first 500 chars):", jsonContent.slice(0, 500));
-  console.log("[Backboard] Extracted JSON (last 500 chars):", jsonContent.slice(-500));
+  // Step 3: Clean up the JSON - handle escaped quotes, newlines, etc.
+  // The pattern {'\\n  "claims"'} needs to become {\n  "claims"}
+  console.log("[Backboard] Before cleaning:", jsonContent.slice(0, 200));
+  
+  // Fix escaped single quotes at boundaries: {\' -> {
+  jsonContent = jsonContent.replace(/^\{\\?['"]/, '{');
+  jsonContent = jsonContent.replace(/\\?['"]\}$/, '}');
+  
+  // Unescape all escaped single quotes: \' -> '
+  jsonContent = jsonContent.replace(/\\'/g, "'");
+  
+  // Unescape escaped newlines: \\n -> \n (but preserve actual \n)
+  jsonContent = jsonContent.replace(/\\\\n/g, '\n');
+  
+  // Unescape escaped double quotes: \" -> " (but only if they're escaping quotes, not in strings)
+  // Be careful: we don't want to break valid escaped quotes inside JSON strings
+  // Only fix if it's clearly a formatting issue at boundaries
+  
+  console.log("[Backboard] After cleaning:", jsonContent.slice(0, 200));
   
   content = jsonContent;
 
-  // Try to parse JSON with better error handling
+  // Try to parse JSON with comprehensive error handling
   let parsed: any;
-  try {
-    parsed = JSON.parse(content);
-    console.log("[Backboard] ✅ Parsed JSON successfully");
-  } catch (parseError: any) {
+  let parseAttempts = 0;
+  const maxAttempts = 3;
+  let lastParseError: Error | null = null;
+  
+  while (parseAttempts < maxAttempts) {
+    try {
+      parsed = JSON.parse(content);
+      console.log("[Backboard] ✅ Parsed JSON successfully on attempt", parseAttempts + 1);
+      break; // Success!
+    } catch (parseError: any) {
+      lastParseError = parseError;
+      parseAttempts++;
+      console.error(`[Backboard] ❌ JSON parse attempt ${parseAttempts} failed:`, parseError.message);
+      
+      if (parseAttempts >= maxAttempts) {
+        // Final attempt failed - log everything and throw
+        const errorPos = parseError.message.match(/position (\d+)/)?.[1] || "0";
+        const pos = parseInt(errorPos);
+        console.error("[Backboard] ========== FINAL PARSE FAILURE ==========");
+        console.error("[Backboard] Error:", parseError.message);
+        console.error("[Backboard] Error position:", errorPos);
+        console.error("[Backboard] Content around error:", content.slice(Math.max(0, pos - 50), pos + 50));
+        console.error("[Backboard] Full content:", content);
+        console.error("[Backboard] ==========================================");
+        
+        throw new Error(
+          `Failed to parse Backboard JSON after ${maxAttempts} attempts: ${parseError.message}. ` +
+          `Content preview: ${content.slice(0, 200)}. ` +
+          `Check Vercel logs for full response.`
+        );
+      }
+      
+      // Try additional fixes for this attempt
+      if (parseAttempts === 1) {
+        // Attempt 1: Try to fix more escaped characters
+        console.log("[Backboard] Attempting additional fixes...");
+        content = content.replace(/\\"/g, '"'); // Unescape double quotes
+        content = content.replace(/\\\\/g, '\\'); // Fix double backslashes
+      } else if (parseAttempts === 2) {
+        // Attempt 2: Try to extract JSON from any remaining wrapper
+        console.log("[Backboard] Attempting JSON extraction from wrapper...");
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          content = jsonMatch[0];
+          console.log("[Backboard] Extracted JSON:", content.slice(0, 200));
+        }
+      }
+    }
+  }
+  
+  // If we get here, parsing succeeded
+  if (!parsed) {
+    // This should never happen, but TypeScript needs this check
+    throw lastParseError || new Error("Failed to parse JSON");
+  }
+  
+  // Continue with parsed object
+  console.log("[Backboard] ✅ Parsed JSON successfully");
     // If parsing fails, try to fix common issues
     console.error("[Backboard] ❌ Initial JSON parse failed:", parseError.message);
     console.error("[Backboard] Parse error at position:", parseError.message.match(/position (\d+)/)?.[1]);
