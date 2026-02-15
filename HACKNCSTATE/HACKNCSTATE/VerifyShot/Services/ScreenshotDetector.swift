@@ -10,7 +10,7 @@ final class ScreenshotDetector: ObservableObject {
     @Published var latestScreenshot: UIImage?
     @Published var pendingAnalysisFromNotification = false
 
-    private var observer: NSObjectProtocol?
+    nonisolated(unsafe) private var observer: NSObjectProtocol?
     private var isListening = false
 
     // MARK: - Request notification permissions
@@ -200,7 +200,10 @@ final class ScreenshotDetector: ObservableObject {
     }
     
     deinit {
-        stopListening()
+        // Remove observer directly from deinit (nonisolated context)
+        if let obs = observer {
+            NotificationCenter.default.removeObserver(obs)
+        }
     }
 }
 
