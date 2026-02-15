@@ -62,6 +62,8 @@ struct ModelConsensusSection: View {
 
             // Confidence bar
             GeometryReader { geo in
+                let w = max(1, geo.size.width)
+                let conf = CGFloat(min(1, max(0, verdict.confidence.isNaN ? 0 : verdict.confidence)))
                 ZStack(alignment: .leading) {
                     Rectangle()
                         .fill(Color.vsDarkGray.opacity(0.1))
@@ -70,7 +72,7 @@ struct ModelConsensusSection: View {
                     
                     Rectangle()
                         .fill(confidenceColor(verdict.confidence))
-                        .frame(width: geo.size.width * CGFloat(verdict.confidence), height: 4)
+                        .frame(width: max(0, w * conf), height: 4)
                         .clipShape(Capsule())
                 }
             }

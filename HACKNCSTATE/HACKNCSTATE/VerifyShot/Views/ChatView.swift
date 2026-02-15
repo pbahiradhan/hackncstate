@@ -79,9 +79,7 @@ struct ChatView: View {
                         }
                     }
                 )
-                .safeAreaInset(edge: .bottom) {
-                    Color.clear.frame(height: 0)
-                }
+                // SafeAreaInset removed — it can produce NaN in CoreGraphics with zero-height frames
         }
         .background(
             Group {
@@ -326,22 +324,12 @@ struct ChatView: View {
             .padding(.vertical, 8)
             .background(Color(uiColor: .secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .opacity(step.delay == 0 || step.isComplete ? 1 : 0)
-            .offset(y: step.delay == 0 || step.isComplete ? 0 : 10)
-            .onAppear {
-                if step.delay > 0 {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.7).delay(step.delay)) {
-                        // Animation handled by opacity/offset
-                    }
-                }
-            }
-            .onChange(of: step.isComplete) { _, newValue in
-                if newValue {
-                    withAnimation(.spring(response: 0.3)) {
-                        // Mark complete
-                    }
-                }
-            }
+            .animation(
+                .spring(response: 0.5, dampingFraction: 0.7).delay(step.delay),
+                value: step.isComplete
+            )
+            .opacity(step.isComplete || step.delay == 0 ? 1 : 0.3)
+            .offset(y: step.isComplete || step.delay == 0 ? 0 : 6)
         }
     }
 

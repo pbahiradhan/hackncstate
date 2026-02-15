@@ -8,7 +8,15 @@ struct BiasSlider: View {
 
     private var normalizedPosition: CGFloat {
         // -1 → 0.0, 0 → 0.5, 1 → 1.0
-        CGFloat((bias.politicalBias + 1) / 2)
+        let raw = CGFloat((bias.politicalBias + 1) / 2)
+        // Guard against NaN/Inf that crashes CoreGraphics
+        return raw.isNaN || raw.isInfinite ? 0.5 : min(1, max(0, raw))
+    }
+
+    /// Safe sensationalism value clamped to 0-1 (guards against NaN)
+    private var safeSensationalism: CGFloat {
+        let raw = CGFloat(bias.sensationalism)
+        return raw.isNaN || raw.isInfinite ? 0 : min(1, max(0, raw))
     }
 
     private var biasLabel: String {
@@ -78,6 +86,7 @@ struct BiasSlider: View {
 
             // Enhanced Slider with confidence interval
             GeometryReader { geo in
+                let w = max(1, geo.size.width) // Guard against zero width → NaN
                 ZStack(alignment: .leading) {
                     // Track — gradient from blue to red
                     HStack(spacing: 0) {
@@ -86,14 +95,14 @@ struct BiasSlider: View {
                             startPoint: .leading,
                             endPoint: .trailing
                         )
-                        .frame(width: geo.size.width / 2)
+                        .frame(width: w / 2)
 
                         LinearGradient(
                             colors: [.vsRed.opacity(0.5), .vsRed],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
-                        .frame(width: geo.size.width / 2)
+                        .frame(width: w / 2)
                     }
                     .frame(height: 6)
                     .clipShape(Capsule())
@@ -102,15 +111,15 @@ struct BiasSlider: View {
                     Rectangle()
                         .fill(Color.vsDarkGray)
                         .frame(width: 2, height: 14)
-                        .offset(x: geo.size.width / 2 - 1)
+                        .offset(x: w / 2 - 1)
 
                     // Confidence interval bar (if available)
-                    if let conf = bias.confidence, conf < 0.9 {
-                        let intervalWidth = geo.size.width * (1 - conf) * 0.3 // Approximate interval
+                    if let conf = bias.confidence, conf >= 0, conf < 0.9 {
+                        let intervalWidth = max(0, w * CGFloat(1 - conf) * 0.3)
                         Rectangle()
                             .fill(Color.vsDarkGray.opacity(0.2))
                             .frame(width: intervalWidth, height: 4)
-                            .offset(x: normalizedPosition * (geo.size.width - intervalWidth))
+                            .offset(x: normalizedPosition * max(0, w - intervalWidth))
                     }
 
                     // Indicator dot
@@ -123,7 +132,7 @@ struct BiasSlider: View {
                                 .fill(Color.vsBlue)
                                 .frame(width: 14, height: 14)
                         )
-                        .offset(x: normalizedPosition * (geo.size.width - 22))
+                        .offset(x: normalizedPosition * max(0, w - 22))
                 }
                 .frame(height: 22)
             }
@@ -163,12 +172,13 @@ struct BiasSlider: View {
                         .font(.caption)
                         .foregroundColor(.vsDarkGray)
                     Spacer()
-                    Text(String(format: "%.0f%%", bias.sensationalism * 100))
+                    Text(String(format: "%.0f%%", safeSensationalism * 100))
                         .font(.caption.monospacedDigit())
                         .foregroundColor(.vsDarkGray)
                 }
                 
                 GeometryReader { geo in
+                    let w = max(1, geo.size.width)
                     ZStack(alignment: .leading) {
                         Rectangle()
                             .fill(Color.vsDarkGray.opacity(0.1))
@@ -183,7 +193,7 @@ struct BiasSlider: View {
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: geo.size.width * CGFloat(bias.sensationalism), height: 6)
+                            .frame(width: max(0, w * safeSensationalism), height: 6)
                             .clipShape(Capsule())
                     }
                 }

@@ -474,15 +474,26 @@ export async function chatAboutJob(
 
     if (toolOutputs.length > 0) {
       try {
-        console.log(`[Backboard] Submitting ${toolOutputs.length} tool output(s) for run ${resp.run_id}…`);
-        const toolRes = await fetch(`${BASE_URL}/threads/${threadId}/tool-outputs`, {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({
-            run_id: resp.run_id,
-            tool_outputs: toolOutputs,
-          }),
-        });
+        // ═══════════════════════════════════════════════════════════
+        // CORRECT ENDPOINT per Backboard docs:
+        //   POST /threads/{thread_id}/runs/{run_id}/submit-tool-outputs
+        // ═══════════════════════════════════════════════════════════
+        const runId = resp.run_id;
+        if (!runId) {
+          throw new Error("No run_id in REQUIRES_ACTION response — cannot submit tool outputs");
+        }
+
+        console.log(`[Backboard] Submitting ${toolOutputs.length} tool output(s) for run ${runId}…`);
+        const toolRes = await fetch(
+          `${BASE_URL}/threads/${threadId}/runs/${runId}/submit-tool-outputs`,
+          {
+            method: "POST",
+            headers: getHeaders(),
+            body: JSON.stringify({
+              tool_outputs: toolOutputs,
+            }),
+          }
+        );
 
         if (!toolRes.ok) {
           const errorText = await toolRes.text();
@@ -494,65 +505,66 @@ export async function chatAboutJob(
 
         // Check if we got content directly from tool submission
         if (toolSubmitResp.content && toolSubmitResp.status !== "REQUIRES_ACTION") {
-          console.log(`[Backboard] Final response received immediately after tool submission`);
+          console.log(`[Backboard] ✅ Final response received immediately after tool submission`);
           return toolSubmitResp.content;
         }
 
-        // If still processing, wait a bit and then fetch the latest message from the thread
-        console.log(`[Backboard] Waiting for Backboard to process tool outputs and generate response…`);
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds for processing
+        // If still processing, poll for the final response
+        console.log(`[Backboard] Waiting for Backboard to process tool outputs…`);
 
-        // Fetch the latest messages from the thread to get the final response
-        try {
-          const messagesRes = await fetch(`${BASE_URL}/threads/${threadId}/messages`, {
-            method: "GET",
-            headers: getHeaders(),
-          });
+        // Poll up to 5 times with increasing delays (total ~25s)
+        const delays = [2000, 4000, 5000, 6000, 8000];
+        for (let attempt = 0; attempt < delays.length; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, delays[attempt]));
+          console.log(`[Backboard] Polling for response (attempt ${attempt + 1}/${delays.length})…`);
 
-          if (messagesRes.ok) {
-            const messagesData = (await messagesRes.json()) as any;
-            // Backboard API might return messages in different formats
-            const messages = Array.isArray(messagesData) 
-              ? messagesData 
-              : (messagesData.messages || messagesData.data || []);
-            
-            // Find the most recent assistant message (should be the final response)
-            const assistantMessages = messages
-              .filter((m: any) => m.role === "assistant" || m.role === "ai")
-              .sort((a: any, b: any) => {
-                // Sort by timestamp or index (most recent first)
-                const aTime = a.created_at || a.timestamp || 0;
-                const bTime = b.created_at || b.timestamp || 0;
-                return bTime - aTime;
-              });
+          try {
+            const messagesRes = await fetch(`${BASE_URL}/threads/${threadId}/messages`, {
+              method: "GET",
+              headers: getHeaders(),
+            });
 
-            if (assistantMessages.length > 0) {
-              const latestMessage = assistantMessages[0];
-              if (latestMessage.content) {
-                console.log(`[Backboard] Retrieved final response from thread messages`);
-                return latestMessage.content;
+            if (messagesRes.ok) {
+              const messagesData = (await messagesRes.json()) as any;
+              const messages = Array.isArray(messagesData) 
+                ? messagesData 
+                : (messagesData.messages || messagesData.data || []);
+              
+              // Find the most recent assistant message
+              const assistantMessages = messages
+                .filter((m: any) => m.role === "assistant" || m.role === "ai")
+                .sort((a: any, b: any) => {
+                  const aTime = a.created_at || a.timestamp || 0;
+                  const bTime = b.created_at || b.timestamp || 0;
+                  return bTime - aTime;
+                });
+
+              if (assistantMessages.length > 0) {
+                const latestMessage = assistantMessages[0];
+                if (latestMessage.content && latestMessage.content.length > 20) {
+                  console.log(`[Backboard] ✅ Retrieved final response from thread messages (attempt ${attempt + 1})`);
+                  return latestMessage.content;
+                }
               }
+            } else {
+              console.warn(`[Backboard] Poll ${attempt + 1}: failed to fetch messages: ${messagesRes.status}`);
             }
-          } else {
-            console.warn(`[Backboard] Failed to fetch messages: ${messagesRes.status}`);
+          } catch (fetchErr: any) {
+            console.warn(`[Backboard] Poll ${attempt + 1} error:`, fetchErr.message);
           }
-        } catch (fetchErr: any) {
-          console.warn(`[Backboard] Error fetching messages:`, fetchErr.message);
         }
 
-        // Fallback: if tool submission response has any content, use it
+        // Fallback: use whatever we got from tool submission
         if (toolSubmitResp.content) {
-          console.log(`[Backboard] Using content from tool submission response`);
+          console.log(`[Backboard] Using content from tool submission response (fallback)`);
           return toolSubmitResp.content;
         }
-
-        // Last resort: check if there's a message in the response
         if (toolSubmitResp.message?.content) {
-          console.log(`[Backboard] Using content from tool submission message`);
+          console.log(`[Backboard] Using content from tool submission message (fallback)`);
           return toolSubmitResp.message.content;
         }
 
-        throw new Error("Deep research completed tool execution but no final response was generated. The assistant may need more time to process the search results.");
+        throw new Error("Deep research completed tool execution but the assistant is still processing. Please try again in a moment.");
       } catch (e: any) {
         console.error("[Backboard] Tool output submission/processing failed:", e.message);
         throw new Error(`Deep research failed: ${e.message}`);

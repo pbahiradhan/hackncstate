@@ -51,7 +51,7 @@ struct HomeView: View {
             }
         }
         .navigationBarHidden(true)
-        .onChange(of: detector.latestScreenshot) { newImage in
+        .onChange(of: detector.latestScreenshot) { _, newImage in
             if let img = newImage {
                 pendingImage = img
                 showScreenshotAlert = true
@@ -61,7 +61,7 @@ struct HomeView: View {
                 }
             }
         }
-        .onChange(of: selectedPhotoItem) { item in
+        .onChange(of: selectedPhotoItem) { _, item in
             if let item {
                 loadPhoto(from: item)
             }
