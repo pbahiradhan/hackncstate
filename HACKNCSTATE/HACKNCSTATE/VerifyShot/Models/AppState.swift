@@ -29,8 +29,10 @@ final class AppState: ObservableObject {
     // Selected tab
     @Published var selectedTab: Tab = .home
 
-    // History
-    @Published var history: [AnalysisResult] = []
+    // History (persisted to UserDefaults)
+    @Published var history: [AnalysisResult] = [] {
+        didSet { persistHistory() }
+    }
 
     // Screenshot notification banner
     @Published var showScreenshotBanner = false
@@ -42,6 +44,35 @@ final class AppState: ObservableObject {
     }
 
     private let api = APIClient.shared
+    private static let historyKey = "verifyshot_history"
+
+    // MARK: - Init — load persisted history
+
+    init() {
+        loadPersistedHistory()
+    }
+
+    private func loadPersistedHistory() {
+        guard let data = UserDefaults.standard.data(forKey: Self.historyKey) else { return }
+        do {
+            let decoded = try JSONDecoder().decode([AnalysisResult].self, from: data)
+            self.history = decoded
+            print("[AppState] Loaded \(decoded.count) history items from disk")
+        } catch {
+            print("[AppState] Failed to load history: \(error.localizedDescription)")
+        }
+    }
+
+    private func persistHistory() {
+        do {
+            // Keep max 50 entries to avoid storage bloat
+            let trimmed = Array(history.prefix(50))
+            let data = try JSONEncoder().encode(trimmed)
+            UserDefaults.standard.set(data, forKey: Self.historyKey)
+        } catch {
+            print("[AppState] Failed to persist history: \(error.localizedDescription)")
+        }
+    }
 
     // MARK: - Upload & Analyze
 

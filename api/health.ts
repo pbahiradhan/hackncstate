@@ -11,6 +11,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
       BACKBOARD_API_KEY: !!process.env.BACKBOARD_API_KEY,
       GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
       BLOB_READ_WRITE_TOKEN: !!process.env.BLOB_READ_WRITE_TOKEN,
+      // Google Search is optional — Perplexity AI via Backboard is the primary search
       GOOGLE_SEARCH_API_KEY: !!process.env.GOOGLE_SEARCH_API_KEY,
       GOOGLE_SEARCH_ENGINE_ID: !!process.env.GOOGLE_SEARCH_ENGINE_ID,
     };
@@ -20,10 +21,6 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     if (!envCheck.BACKBOARD_API_KEY) missingRequired.push("BACKBOARD_API_KEY");
     if (!envCheck.GEMINI_API_KEY) missingRequired.push("GEMINI_API_KEY");
     if (!envCheck.BLOB_READ_WRITE_TOKEN) missingRequired.push("BLOB_READ_WRITE_TOKEN");
-
-    const missingOptional = [];
-    if (!envCheck.GOOGLE_SEARCH_API_KEY) missingOptional.push("GOOGLE_SEARCH_API_KEY");
-    if (!envCheck.GOOGLE_SEARCH_ENGINE_ID) missingOptional.push("GOOGLE_SEARCH_ENGINE_ID");
 
     // Check API key lengths (basic validation)
     let backboardKeyValid = false;
@@ -47,11 +44,9 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
         GEMINI_API_KEY: geminiKeyValid ? "valid_length" : envCheck.GEMINI_API_KEY ? "too_short" : "not_set",
       },
       missingRequired: missingRequired.length > 0 ? missingRequired : undefined,
-      missingOptional: missingOptional.length > 0 ? missingOptional : undefined,
+      searchProvider: "Perplexity AI via Backboard.io (primary), Google Custom Search (optional fallback)",
       message: allRequired
-        ? "All required environment variables are set. ✅" + (missingOptional.length > 0
-          ? ` Optional missing: ${missingOptional.join(", ")} (web search won't work without these).`
-          : " All optional vars also set.")
+        ? "All required environment variables are set. ✅ Web search uses Perplexity AI (no Google keys needed)."
         : `Missing required env vars: ${missingRequired.join(", ")}. Set these in Vercel → Settings → Environment Variables.`,
     });
   } catch (err: any) {

@@ -4,7 +4,7 @@ import SwiftUI
 
 struct BiasSlider: View {
     let bias: BiasSignals
-    @State private var showDetails = false
+    @State private var showDetails = true
 
     private var normalizedPosition: CGFloat {
         // -1 → 0.0, 0 → 0.5, 1 → 1.0
@@ -249,48 +249,85 @@ struct BiasSlider: View {
                     }
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
-                    .background(Color.vsBackground)
+                    .background(Color(uiColor: .tertiarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
         }
         .padding(20)
-        .background(Color.white)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
     }
     
     private func perspectiveRow(_ label: String, _ perspective: BiasPerspective, _ color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(label)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(color)
+                // Icon + label
+                HStack(spacing: 6) {
+                    Image(systemName: perspectiveIcon(label))
+                        .font(.caption)
+                        .foregroundColor(color)
+                    Text(label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(color)
+                }
+
                 Spacer()
-                Text(String(format: "Consensus: %.0f%%", perspective.consensus * 100))
+
+                // Sensationalism pill
+                Text("Sens: \(Int(perspective.sensationalism * 100))%")
                     .font(.caption2.monospacedDigit())
                     .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(uiColor: .tertiarySystemFill))
+                    .clipShape(Capsule())
             }
-            
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Bias")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text(String(format: "%.2f", perspective.bias))
-                        .font(.caption.monospacedDigit())
-                        .foregroundColor(.vsDarkGray)
+
+            // Mini bias slider for this perspective
+            GeometryReader { geo in
+                let w = max(1, geo.size.width)
+                let pos = CGFloat((perspective.bias + 1) / 2)
+                let safePos = pos.isNaN || pos.isInfinite ? 0.5 : min(1, max(0, pos))
+
+                ZStack(alignment: .leading) {
+                    // Track
+                    HStack(spacing: 0) {
+                        color.opacity(0.3)
+                            .frame(width: w / 2)
+                        color.opacity(0.15)
+                            .frame(width: w / 2)
+                    }
+                    .frame(height: 4)
+                    .clipShape(Capsule())
+
+                    // Center mark
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 1, height: 8)
+                        .offset(x: w / 2 - 0.5)
+
+                    // Dot
+                    Circle()
+                        .fill(color)
+                        .frame(width: 10, height: 10)
+                        .shadow(color: color.opacity(0.3), radius: 2, y: 1)
+                        .offset(x: safePos * max(0, w - 10))
                 }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Sensationalism")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text(String(format: "%.0f%%", perspective.sensationalism * 100))
-                        .font(.caption.monospacedDigit())
-                        .foregroundColor(.vsDarkGray)
-                }
+                .frame(height: 10)
             }
+            .frame(height: 10)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func perspectiveIcon(_ label: String) -> String {
+        switch label {
+        case "US Left": return "arrow.left.circle"
+        case "US Right": return "arrow.right.circle"
+        case "International": return "globe"
+        default: return "circle"
         }
     }
 }

@@ -34,7 +34,7 @@ struct ModelConsensusSection: View {
             }
         }
         .padding(20)
-        .background(Color.white)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
     }
@@ -113,7 +113,7 @@ struct ModelConsensusSection: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(12)
-                    .background(Color.white)
+                    .background(Color(uiColor: .systemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
                     .offset(y: 120)
@@ -135,7 +135,7 @@ struct ModelConsensusSection: View {
                     .foregroundColor(.vsOrange)
             }
         }
-        .background(Color.white.clipShape(Circle()).padding(-2))
+        .background(Color(uiColor: .systemBackground).clipShape(Circle()).padding(-2))
     }
 
     private func modelEmoji(_ name: String) -> String {

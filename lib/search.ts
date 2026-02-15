@@ -1,8 +1,7 @@
 // ──────────────────────────────────────────────
-//  Web Search — Two strategies:
-//  1. searchWithAI() — Uses Perplexity sonar-pro via Backboard
-//     (built-in web search, no Google API keys needed)
-//  2. searchSources() — Google Custom Search API (legacy fallback)
+//  Web Search — Perplexity sonar-pro via Backboard.io
+//  Built-in web search, no separate API keys needed.
+//  Legacy Google Custom Search fallback kept for optional use.
 // ──────────────────────────────────────────────
 
 import { Source } from "./types";

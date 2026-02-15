@@ -184,7 +184,7 @@ struct HistoryRow: View {
                 .foregroundColor(.vsDarkGray)
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
     }

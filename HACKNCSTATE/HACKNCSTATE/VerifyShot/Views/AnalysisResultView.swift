@@ -137,7 +137,7 @@ struct AnalysisResultView: View {
         return Image(systemName: isPositive ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
             .font(.system(size: 32))
             .foregroundColor(isPositive ? .vsGreen : .vsOrange)
-            .background(Color.white.clipShape(Circle()).padding(-2))
+            .background(Color(uiColor: .systemBackground).clipShape(Circle()).padding(-2))
     }
 
     // MARK: - Quick Summary
@@ -159,7 +159,7 @@ struct AnalysisResultView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(Color.white)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         .padding(.horizontal, 20)
@@ -232,7 +232,7 @@ struct AnalysisResultView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
     }
@@ -263,16 +263,16 @@ struct AnalysisResultView: View {
                 .padding(.horizontal, 20)
 
             if sources.isEmpty {
-                HStack {
+                HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundColor(.vsDarkGray)
-                    Text("No web sources found. Set up Google Search API keys for source verification.")
+                        .foregroundColor(.secondary)
+                    Text("No web sources found. The AI couldn't find matching articles for this content.")
                         .font(.caption)
-                        .foregroundColor(.vsDarkGray)
+                        .foregroundColor(.secondary)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .padding(.horizontal, 20)
             } else {

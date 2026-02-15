@@ -480,6 +480,7 @@ struct ChatView: View {
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         inputText = ""
         isInputFocused = false
         appState.sendChatMessage(text)

@@ -240,7 +240,7 @@ struct DeepResearchView: View {
                 }
             }
             .padding(20)
-            .background(Color.white)
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
             .padding(.horizontal, 20)
@@ -265,13 +265,13 @@ struct DeepResearchView: View {
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.vsDarkGray)
-                    Text("No web sources found. Set up Google Search API for source verification.")
+                    Text("No web sources found. The AI couldn't find matching articles for this content.")
                         .font(.caption)
                         .foregroundColor(.vsDarkGray)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .padding(.horizontal, 20)
             } else {
@@ -325,7 +325,7 @@ struct DeepResearchView: View {
                     Spacer()
                 }
                 .padding(16)
-                .background(Color.white)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
                 .padding(.horizontal, 20)

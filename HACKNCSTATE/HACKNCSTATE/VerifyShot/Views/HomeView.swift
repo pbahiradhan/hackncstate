@@ -10,11 +10,13 @@ import PhotosUI
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var detector: ScreenshotDetector
+    @Environment(\.colorScheme) var colorScheme
     @State private var showAttachmentMenu = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var pendingImage: UIImage?
     @State private var showScreenshotAlert = false
     @State private var isCheckingLatestScreenshot = false
+    @State private var showShareSheet = false
 
     var body: some View {
         ZStack {
@@ -106,11 +108,11 @@ struct HomeView: View {
                 VStack(spacing: 8) {
                     Text("VerifyShot")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundColor(.vsNavy)
+                        .foregroundColor(.primary)
 
                     Text("Upload a screenshot to verify claims\nwith AI-powered fact-checking")
                         .font(.subheadline)
-                        .foregroundColor(.vsDarkGray)
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .lineSpacing(3)
                 }
@@ -123,6 +125,7 @@ struct HomeView: View {
                 // Check Latest Screenshot
                 Button {
                     isCheckingLatestScreenshot = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     Task {
                         await appState.analyzeLatestScreenshot()
                         isCheckingLatestScreenshot = false
@@ -151,6 +154,7 @@ struct HomeView: View {
 
                 // Upload Screenshot
                 Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     showAttachmentMenu = true
                 } label: {
                     HStack(spacing: 10) {
@@ -207,12 +211,12 @@ struct HomeView: View {
 
                 Text(appState.progressText.isEmpty ? "Analyzing screenshot…" : appState.progressText)
                     .font(.headline)
-                    .foregroundColor(.vsNavy)
+                    .foregroundColor(.primary)
                     .animation(.easeInOut(duration: 0.3), value: appState.progressText)
 
                 Text("This may take a moment")
                     .font(.caption)
-                    .foregroundColor(.vsDarkGray)
+                    .foregroundColor(.secondary)
             }
 
             Spacer()
@@ -269,10 +273,33 @@ struct HomeView: View {
 
     private func resultHeader(_ result: AnalysisResult) -> some View {
         VStack(spacing: 16) {
-            // Top bar with "New Analysis" button
+            // Top bar with "New Analysis" and "Share" buttons
             HStack {
-                Spacer()
+                // Share button
                 Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showShareSheet = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.caption)
+                        Text("Share")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundColor(.vsBlue)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.vsBlue.opacity(0.1))
+                    .clipShape(Capsule())
+                }
+                .sheet(isPresented: $showShareSheet) {
+                    ShareSheet(result: result, screenshotImage: appState.screenshotImage)
+                }
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     appState.resetForNewScreenshot()
                 } label: {
                     HStack(spacing: 4) {
@@ -300,17 +327,17 @@ struct HomeView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
-                                .stroke(Color.vsGray, lineWidth: 2)
+                                .stroke(Color(uiColor: .separator), lineWidth: 1)
                         )
                         .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
                 } else {
                     RoundedRectangle(cornerRadius: 14)
-                        .fill(Color.vsGray)
+                        .fill(Color(uiColor: .tertiarySystemFill))
                         .frame(width: 90, height: 90)
                         .overlay(
                             Image(systemName: "photo")
                                 .font(.title2)
-                                .foregroundColor(.vsDarkGray)
+                                .foregroundColor(.secondary)
                         )
                 }
 
@@ -341,12 +368,12 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(result.trustLabel)
                     .font(.headline)
-                    .foregroundColor(.vsNavy)
+                    .foregroundColor(.primary)
 
                 if let firstClaim = result.claims.first, !firstClaim.modelVerdicts.isEmpty {
                     Text("Verified by \(firstClaim.modelVerdicts.count) AI models • \(result.claims.count) claim\(result.claims.count == 1 ? "" : "s") analyzed")
                         .font(.caption)
-                        .foregroundColor(.vsDarkGray)
+                        .foregroundColor(.secondary)
                 }
             }
 
@@ -371,7 +398,7 @@ struct HomeView: View {
                     .foregroundColor(.vsOrange)
                 Text("Quick Summary")
                     .font(.headline)
-                    .foregroundColor(.vsNavy)
+                    .foregroundColor(.primary)
             }
 
             Text(summary)
@@ -382,7 +409,7 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(Color.white)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         .padding(.horizontal, 20)
@@ -397,7 +424,7 @@ struct HomeView: View {
                     .foregroundColor(.vsNavy)
                 Text("CLAIMS ANALYZED")
                     .font(.caption.weight(.bold))
-                    .foregroundColor(.vsDarkGray)
+                    .foregroundColor(.secondary)
                     .tracking(1)
             }
             .padding(.horizontal, 20)
@@ -418,7 +445,7 @@ struct HomeView: View {
 
                 Text(claim.text)
                     .font(.subheadline.weight(.medium))
-                    .foregroundColor(.vsNavy)
+                    .foregroundColor(.primary)
                     .lineLimit(3)
 
                 Spacer()
@@ -459,7 +486,7 @@ struct HomeView: View {
             }
         }
         .padding(16)
-        .background(Color.white)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
     }
@@ -487,7 +514,7 @@ struct HomeView: View {
                     .foregroundColor(.vsBlue)
                 Text("SOURCE VERIFICATION")
                     .font(.caption.weight(.bold))
-                    .foregroundColor(.vsDarkGray)
+                    .foregroundColor(.secondary)
                     .tracking(1)
             }
             .padding(.horizontal, 20)
@@ -495,14 +522,14 @@ struct HomeView: View {
             if sources.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundColor(.vsDarkGray)
-                    Text("No web sources found. Set up Google Search API for source verification.")
+                        .foregroundColor(.secondary)
+                    Text("No web sources found. The AI couldn't find matching articles for this content.")
                         .font(.caption)
-                        .foregroundColor(.vsDarkGray)
+                        .foregroundColor(.secondary)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .padding(.horizontal, 20)
             } else {
@@ -520,6 +547,7 @@ struct HomeView: View {
         VStack(spacing: 12) {
             // Ask AI about this
             Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 appState.enterChatFromResults()
             } label: {
                 HStack(spacing: 10) {
@@ -538,6 +566,7 @@ struct HomeView: View {
 
             // Deep research
             Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 appState.isDeepResearchMode = true
                 appState.enterChatFromResults()
             } label: {
@@ -622,6 +651,7 @@ struct HomeView: View {
                 Spacer()
 
                 Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     showScreenshotAlert = false
                     if let img = pendingImage {
                         appState.analyzeScreenshot(img)
@@ -661,35 +691,60 @@ struct HomeView: View {
         .zIndex(100)
     }
 
-    // MARK: - Error Banner
+    // MARK: - Error Banner (with retry button)
 
     private func errorBanner(_ error: String) -> some View {
         VStack {
             Spacer()
 
-            HStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.white)
-                    .font(.title3)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Analysis Failed")
-                        .font(.headline)
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.white)
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.8))
-                        .lineLimit(3)
+                        .font(.title3)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Analysis Failed")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(3)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        appState.analysisError = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
                 }
 
-                Spacer()
-
-                Button {
-                    appState.analysisError = nil
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.white.opacity(0.7))
+                // Retry button
+                if appState.screenshotImage != nil {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        appState.analysisError = nil
+                        if let img = appState.screenshotImage {
+                            appState.analyzeScreenshot(img)
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption.weight(.bold))
+                            Text("Try Again")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .foregroundColor(.vsRed)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
                 }
             }
             .padding(16)
@@ -773,4 +828,38 @@ struct HomeView: View {
             }
         }
     }
+}
+
+// MARK: - Share Sheet (renders analysis as shareable content)
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let result: AnalysisResult
+    let screenshotImage: UIImage?
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        var items: [Any] = []
+
+        // Build share text
+        let trustEmoji = result.aggregateTrustScore >= 75 ? "✅" : (result.aggregateTrustScore >= 40 ? "⚠️" : "🚫")
+        var text = "\(trustEmoji) VerifyShot Analysis: \(result.trustLabel) (\(result.aggregateTrustScore)%)\n\n"
+        text += "📝 \(result.summary)\n\n"
+
+        for (i, claim) in result.claims.enumerated() {
+            let icon = claim.verdict == "likely_true" ? "✅" : (claim.verdict == "likely_misleading" ? "❌" : "❓")
+            text += "\(icon) Claim \(i + 1): \(claim.text) — \(claim.trustScore)%\n"
+        }
+
+        text += "\nAnalyzed by VerifyShot AI"
+        items.append(text)
+
+        // Attach the screenshot if available
+        if let img = screenshotImage {
+            items.append(img)
+        }
+
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
