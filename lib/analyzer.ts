@@ -47,20 +47,49 @@ export async function analyzeImage(
   let sources: Source[] = [];
   
   try {
-    [extractedClaims, sources] = await Promise.all([
+    // Extract first meaningful sentence for initial search
+    const sentences = ocrText.split(/[.!?\n]/).map(s => s.trim()).filter(s => s.length > 15);
+    const primaryQuery = sentences[0] || ocrText.slice(0, 200);
+    
+    // Run claim extraction + primary search in parallel
+    const [claimsResult, primarySources] = await Promise.all([
       extractClaims(ocrText).catch((err: any) => {
         console.warn(`[Orchestrator][${jobId}] Claim extraction failed:`, err.message);
-        // Fallback: use first sentence as a single claim
-        const firstSentence = ocrText.split(/[.!?\n]/)[0]?.trim();
+        const firstSentence = sentences[0];
         return firstSentence && firstSentence.length > 10
           ? [{ text: firstSentence }]
           : [{ text: ocrText.slice(0, 200) }];
       }),
-      searchSources(ocrText.split(/[.!?\n]/)[0]?.trim() || ocrText.slice(0, 200), 10).catch((err: any) => {
-        console.warn(`[Orchestrator][${jobId}] Search failed:`, err.message);
+      searchSources(primaryQuery, 10).catch((err: any) => {
+        console.warn(`[Orchestrator][${jobId}] Primary search failed:`, err.message);
         return [];
       }),
     ]);
+    
+    extractedClaims = claimsResult;
+    sources = primarySources;
+    
+    // If primary search returned few results, run additional searches using extracted claims
+    if (sources.length < 5 && extractedClaims.length > 0) {
+      console.log(`[Orchestrator][${jobId}] Running additional searches for ${extractedClaims.length} claim(s)…`);
+      const additionalSearches = await Promise.all(
+        extractedClaims.slice(0, 3).map(claim =>
+          searchSources(claim.text, 5).catch(() => [] as Source[])
+        )
+      );
+      
+      // Merge & deduplicate sources
+      const seenUrls = new Set(sources.map(s => s.url));
+      for (const results of additionalSearches) {
+        for (const src of results) {
+          if (!seenUrls.has(src.url)) {
+            seenUrls.add(src.url);
+            sources.push(src);
+          }
+        }
+      }
+      console.log(`[Orchestrator][${jobId}] After additional searches: ${sources.length} total source(s)`);
+    }
   } catch (err: any) {
     console.error(`[Orchestrator][${jobId}] Step 2 failed:`, err.message);
     throw new Error(`Analysis failed: ${err.message}`);
@@ -71,11 +100,14 @@ export async function analyzeImage(
   // ── Step 3: Quality Gate (local, 0 API calls) ──
   console.log(`[Orchestrator][${jobId}] Step 3: Quality gate check…`);
   
-  const highQualitySources = sources.filter(s => (s.credibilityScore || 0) >= 0.7);
-  const hasMinimumSources = highQualitySources.length >= 3;
+  // Relaxed quality gate: credibility >= 0.6 and only 2 required
+  const highQualitySources = sources.filter(s => (s.credibilityScore || 0) >= 0.6);
+  const hasMinimumSources = highQualitySources.length >= 2;
   
-  if (!hasMinimumSources) {
-    console.log(`[Orchestrator][${jobId}] ⚠️ Quality gate failed: only ${highQualitySources.length} high-quality sources (need 3+)`);
+  if (!hasMinimumSources && sources.length === 0) {
+    // Only block if we got ZERO sources at all (search keys not configured or total failure)
+    console.log(`[Orchestrator][${jobId}] ⚠️ Quality gate failed: no sources found at all`);
+    console.log(`[Orchestrator][${jobId}] ⚠️ Check GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID are set in Vercel`);
     
     // Return "unable to verify" result
     const result: AnalysisResult = {
@@ -87,27 +119,32 @@ export async function analyzeImage(
         text: c.text,
         verdict: "unable_to_verify" as const,
         trustScore: 0,
-        explanation: `Unable to verify: Found only ${highQualitySources.length} high-quality source(s), need at least 3 for reliable verification.`,
-        sources: sources.slice(0, 5),
+        explanation: `Unable to verify: No web sources found. Make sure Google Search API keys are configured.`,
+        sources: [],
         biasSignals: {
           politicalBias: 0,
           sensationalism: 0.3,
           overallBias: "center",
-          explanation: "Unable to assess bias without sufficient sources.",
+          explanation: "Unable to assess bias without sources.",
         },
         modelVerdicts: [],
       })),
       aggregateTrustScore: 0,
       trustLabel: "Unable to Verify",
-      summary: `Unable to verify claims: Insufficient high-quality sources found (${highQualitySources.length} of 3 required).`,
+      summary: `Unable to verify claims: No web sources found. Configure GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID in Vercel environment variables.`,
       generatedAt: new Date().toISOString(),
     };
     
     console.log(`[Orchestrator][${jobId}] ⚠️ Returning "unable to verify" result`);
     return result;
   }
-
-  console.log(`[Orchestrator][${jobId}] ✅ Quality gate passed: ${highQualitySources.length} high-quality sources`);
+  
+  // If we have some sources but below threshold, proceed anyway with a warning
+  if (!hasMinimumSources) {
+    console.log(`[Orchestrator][${jobId}] ⚠️ Below ideal threshold (${highQualitySources.length} high-quality of ${sources.length} total) — proceeding with available sources`);
+  } else {
+    console.log(`[Orchestrator][${jobId}] ✅ Quality gate passed: ${highQualitySources.length} high-quality sources out of ${sources.length} total`);
+  }
 
   // ── Step 4: Multi-Model Verification (3 models × N claims, all parallel, ~5-8s) ──
   console.log(`[Orchestrator][${jobId}] Step 4: Multi-model verification (${extractedClaims.length} claim(s) × 3 models, parallel)…`);
