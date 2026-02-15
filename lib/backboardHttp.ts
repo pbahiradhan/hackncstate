@@ -189,7 +189,7 @@ Analyze this content and return the JSON response.`;
     throw new Error(`Failed to send message: ${messageRes.status} - ${errorText}`);
   }
 
-  const resp = await messageRes.json();
+  const resp = (await messageRes.json()) as any;
 
   // Parse JSON from response
   let content = resp.content?.trim() || "";
