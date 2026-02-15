@@ -301,15 +301,36 @@ Analyze this content and return the JSON response.`;
     // Try to fix escaped quotes issue - sometimes Backboard returns JSON with escaped quotes
     let fixedContent = content;
     
-    // Strategy 1: Remove any single quotes that might be escaping double quotes incorrectly
-    // But only if they're at the start/end of property names
+    // Strategy 1: Fix escaped single quotes at the start/end of JSON
+    // Backboard sometimes returns {\'\\n  "claims"\'} which is invalid
+    // Remove escaped single quotes that wrap the entire JSON object
+    if (fixedContent.match(/^\{\\?['"]/)) {
+      fixedContent = fixedContent.replace(/^\{\\?['"]/, '{');
+    }
+    if (fixedContent.match(/\\?['"]\}$/)) {
+      fixedContent = fixedContent.replace(/\\?['"]\}$/, '}');
+    }
+    
+    // Strategy 2: Fix escaped single quotes that are incorrectly escaping property names
+    // Pattern: {\'\\n  "claims"\'} should become {\n  "claims"}
     fixedContent = fixedContent.replace(/\\'/g, "'");
     
-    // Strategy 2: Fix any double-escaped quotes
+    // Strategy 3: Fix any double-escaped quotes
     fixedContent = fixedContent.replace(/\\\\"/g, '\\"');
     
-    // Strategy 3: Try to fix any weird newline issues
+    // Strategy 4: Fix escaped newlines that might be causing issues
+    // But preserve actual newlines in string values
     fixedContent = fixedContent.replace(/\\n\s*\\n/g, '\\n');
+    
+    // Strategy 5: Remove any remaining escaped quotes at the very start/end
+    // This handles cases where the JSON is wrapped in escaped quotes
+    fixedContent = fixedContent.trim();
+    if (fixedContent.startsWith("{\\'") || fixedContent.startsWith('{\\"')) {
+      fixedContent = '{' + fixedContent.substring(3);
+    }
+    if (fixedContent.endsWith("\\'}") || fixedContent.endsWith('\\"}')) {
+      fixedContent = fixedContent.substring(0, fixedContent.length - 3) + '}';
+    }
     
     console.log("[Backboard] Attempting to fix JSON...");
     console.log("[Backboard] Fixed content (first 500 chars):", fixedContent.slice(0, 500));
