@@ -204,27 +204,59 @@ Analyze this content and return the JSON response.`;
   console.log("[Backboard] Response content type:", typeof resp.content);
   console.log("[Backboard] Full response (first 2000 chars):", JSON.stringify(resp).slice(0, 2000));
 
-  // Backboard API might return content in different formats
-  // Try multiple possible fields
+  // Backboard API returns content as a string in resp.content
+  // According to docs: response.json()["content"] contains the text
   let content = "";
   if (typeof resp.content === "string") {
-    content = resp.content.trim();
-  } else if (resp.message?.content) {
-    content = resp.message.content.trim();
-  } else if (resp.text) {
-    content = resp.text.trim();
+    content = resp.content;
+  } else if (resp.message?.content && typeof resp.message.content === "string") {
+    content = resp.message.content;
+  } else if (resp.text && typeof resp.text === "string") {
+    content = resp.text;
   } else if (Array.isArray(resp.messages) && resp.messages.length > 0) {
-    content = resp.messages[resp.messages.length - 1].content?.trim() || "";
+    const lastMsg = resp.messages[resp.messages.length - 1];
+    if (typeof lastMsg.content === "string") {
+      content = lastMsg.content;
+    }
   } else {
-    // Try to stringify and extract
-    const respStr = JSON.stringify(resp);
-    console.error("[Backboard] Unexpected response structure:", respStr.slice(0, 1000));
+    // Log the full response to understand the structure
+    console.error("[Backboard] Unexpected response structure");
+    console.error("[Backboard] Response keys:", Object.keys(resp));
+    console.error("[Backboard] Response type:", typeof resp);
+    console.error("[Backboard] Full response:", JSON.stringify(resp).slice(0, 2000));
     throw new Error("Backboard response format not recognized. Check API response structure.");
   }
   
+  // Trim whitespace but preserve the actual content
+  content = content.trim();
+  
   console.log("[Backboard] Extracted content length:", content.length);
-  console.log("[Backboard] Raw content (first 1000 chars):", content.slice(0, 1000));
-  console.log("[Backboard] Raw content (last 500 chars):", content.slice(-500));
+  console.log("[Backboard] Raw content (first 200 chars):", content.slice(0, 200));
+  console.log("[Backboard] Raw content (last 200 chars):", content.slice(-200));
+  
+  // Check if content is wrapped in quotes (string literal)
+  // Backboard might return JSON as a string literal like '{"claims":...}'
+  if ((content.startsWith("'") && content.endsWith("'")) || 
+      (content.startsWith('"') && content.endsWith('"')) ||
+      (content.startsWith("{\\'") || content.startsWith('{\\"'))) {
+    console.log("[Backboard] ⚠️ Content appears to be a string literal, attempting to unwrap...");
+    // Try to unwrap string literal
+    if (content.startsWith("'") && content.endsWith("'")) {
+      content = content.slice(1, -1);
+    } else if (content.startsWith('"') && content.endsWith('"')) {
+      content = content.slice(1, -1);
+    }
+    // Handle escaped quotes at start/end
+    if (content.startsWith("{\\'")) {
+      content = '{' + content.substring(3);
+    }
+    if (content.endsWith("\\'}")) {
+      content = content.substring(0, content.length - 3) + '}';
+    }
+    // Unescape any remaining escaped quotes
+    content = content.replace(/\\'/g, "'").replace(/\\"/g, '"');
+    console.log("[Backboard] Unwrapped content (first 200 chars):", content.slice(0, 200));
+  }
 
   // Validate we have content
   if (!content || content.length < 10) {
