@@ -5,7 +5,7 @@
 // ──────────────────────────────────────────────
 
 import { extractTextFromImage } from "./geminiOcr";
-import { analyzeTextComprehensive } from "./backboard";
+import { analyzeTextComprehensive } from "./backboardHttp";
 import { searchSources } from "./search";
 import { calculateTrustScore, biasPenalty, trustLabel } from "./trustScore";
 import { AnalysisResult, Claim, Source } from "./types";

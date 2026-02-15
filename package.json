@@ -2,7 +2,6 @@
   "name": "verifyshot-backend",
   "version": "1.0.0",
   "description": "VerifyShot - Screenshot Fact-Checking Backend",
-  "type": "module",
   "scripts": {
     "dev": "vercel dev",
     "build": "tsc --noEmit",

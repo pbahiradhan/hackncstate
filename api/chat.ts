@@ -3,7 +3,7 @@
 // Returns: { reply: string }
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { chatAboutJob } from "../lib/backboard";
+import { chatAboutJob } from "../lib/backboardHttp";
 
 export const maxDuration = 60;
 
