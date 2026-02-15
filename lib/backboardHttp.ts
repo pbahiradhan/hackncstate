@@ -198,11 +198,17 @@ Analyze this content and return the JSON response.`;
 
   const resp = (await messageRes.json()) as any;
   
-  // Log full response structure for debugging
-  console.log("[Backboard] Full API response keys:", Object.keys(resp));
+  // Log FULL raw response for debugging
+  console.log("=".repeat(80));
+  console.log("[Backboard] ========== RAW API RESPONSE ==========");
+  console.log("[Backboard] Full response object:", JSON.stringify(resp, null, 2));
+  console.log("[Backboard] Response keys:", Object.keys(resp));
   console.log("[Backboard] Response status:", resp.status);
   console.log("[Backboard] Response content type:", typeof resp.content);
-  console.log("[Backboard] Full response (first 2000 chars):", JSON.stringify(resp).slice(0, 2000));
+  console.log("[Backboard] Response content (raw):", resp.content);
+  console.log("[Backboard] Response content (stringified):", JSON.stringify(resp.content));
+  console.log("[Backboard] Response content length:", resp.content?.length || 0);
+  console.log("=".repeat(80));
 
   // Backboard API returns content as a string in resp.content
   // According to docs: response.json()["content"] contains the text
@@ -230,32 +236,82 @@ Analyze this content and return the JSON response.`;
   // Trim whitespace but preserve the actual content
   content = content.trim();
   
-  console.log("[Backboard] Extracted content length:", content.length);
-  console.log("[Backboard] Raw content (first 200 chars):", content.slice(0, 200));
-  console.log("[Backboard] Raw content (last 200 chars):", content.slice(-200));
+  console.log("=".repeat(80));
+  console.log("[Backboard] ========== EXTRACTED CONTENT ==========");
+  console.log("[Backboard] Content length:", content.length);
+  console.log("[Backboard] Content (first 500 chars):", content.slice(0, 500));
+  console.log("[Backboard] Content (last 500 chars):", content.slice(-500));
+  console.log("[Backboard] Content (full):", content);
+  console.log("[Backboard] Content char codes (first 50):", 
+    Array.from(content.slice(0, 50)).map(c => `${c.charCodeAt(0)}(${c})`).join(' '));
+  console.log("=".repeat(80));
   
   // Check if content is wrapped in quotes (string literal)
   // Backboard might return JSON as a string literal like '{"claims":...}'
+  // Also handle the specific pattern: {\'\\n  "claims"\'}
+  const originalContent = content;
+  
   if ((content.startsWith("'") && content.endsWith("'")) || 
       (content.startsWith('"') && content.endsWith('"')) ||
-      (content.startsWith("{\\'") || content.startsWith('{\\"'))) {
-    console.log("[Backboard] ⚠️ Content appears to be a string literal, attempting to unwrap...");
-    // Try to unwrap string literal
+      (content.startsWith("{\\'") || content.startsWith('{\\"')) ||
+      (content.includes("\\'") && content.includes("\\n"))) {
+    console.log("[Backboard] ⚠️ Content appears to be a string literal or has escaped quotes");
+    console.log("[Backboard] Original content:", content);
+    
+    // Strategy 1: Unwrap if wrapped in quotes
     if (content.startsWith("'") && content.endsWith("'")) {
       content = content.slice(1, -1);
+      console.log("[Backboard] Unwrapped single quotes:", content.slice(0, 100));
     } else if (content.startsWith('"') && content.endsWith('"')) {
       content = content.slice(1, -1);
+      console.log("[Backboard] Unwrapped double quotes:", content.slice(0, 100));
     }
-    // Handle escaped quotes at start/end
+    
+    // Strategy 2: Fix escaped quotes at JSON boundaries
+    // Pattern: {\'\\n  "claims"\'} -> {\n  "claims"}
     if (content.startsWith("{\\'")) {
       content = '{' + content.substring(3);
+      console.log("[Backboard] Fixed escaped quote at start:", content.slice(0, 100));
+    }
+    if (content.startsWith('{\\"')) {
+      content = '{' + content.substring(3);
+      console.log("[Backboard] Fixed escaped double quote at start:", content.slice(0, 100));
     }
     if (content.endsWith("\\'}")) {
       content = content.substring(0, content.length - 3) + '}';
+      console.log("[Backboard] Fixed escaped quote at end");
     }
-    // Unescape any remaining escaped quotes
-    content = content.replace(/\\'/g, "'").replace(/\\"/g, '"');
-    console.log("[Backboard] Unwrapped content (first 200 chars):", content.slice(0, 200));
+    if (content.endsWith('\\"}')) {
+      content = content.substring(0, content.length - 3) + '}';
+      console.log("[Backboard] Fixed escaped double quote at end");
+    }
+    
+    // Strategy 3: Unescape all escaped single quotes (but be careful with valid escapes)
+    // Replace \\' with ' (escaped single quote -> single quote)
+    content = content.replace(/\\'/g, "'");
+    
+    // Strategy 4: Unescape escaped double quotes
+    content = content.replace(/\\"/g, '"');
+    
+    // Strategy 5: Fix escaped newlines
+    content = content.replace(/\\n/g, '\n');
+    
+    console.log("[Backboard] After unwrapping (first 500 chars):", content.slice(0, 500));
+    console.log("[Backboard] After unwrapping (last 500 chars):", content.slice(-500));
+  }
+  
+  // If content still looks wrong, try parsing it as JSON string first
+  if (content.startsWith('"') && content.endsWith('"')) {
+    try {
+      console.log("[Backboard] Content is a JSON string, attempting to parse...");
+      const parsedString = JSON.parse(content);
+      if (typeof parsedString === "string") {
+        content = parsedString;
+        console.log("[Backboard] Successfully parsed JSON string, new content:", content.slice(0, 200));
+      }
+    } catch (e) {
+      console.log("[Backboard] Failed to parse as JSON string, continuing with original");
+    }
   }
 
   // Validate we have content
