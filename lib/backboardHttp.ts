@@ -247,19 +247,50 @@ Analyze this content and return the JSON response.`;
   console.log("[Backboard] Extracted content length:", content.length);
   console.log("[Backboard] Content preview:", content.slice(0, 500));
 
+  // Validate we have content
+  if (!content || content.length < 10) {
+    console.error("[Backboard] ❌ Empty or too short content from Backboard");
+    console.error("[Backboard] Response object:", JSON.stringify(resp).slice(0, 1000));
+    throw new Error("Backboard returned empty or invalid response. Check API key and credits.");
+  }
+  
+  // Check if it looks like JSON
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('```json') && !trimmed.startsWith('```')) {
+    console.error("[Backboard] ⚠️ Response doesn't look like JSON!");
+    console.error("[Backboard] First 200 chars:", content.slice(0, 200));
+    console.error("[Backboard] This suggests Backboard ignored the JSON-only instruction");
+  }
+
   // Strip markdown code fences if present
   if (content.startsWith("```")) {
     content = content.replace(/```(?:json)?\n?/g, "").trim();
   }
 
-  // Try to find JSON object
+  // Try multiple strategies to extract JSON
+  let jsonContent = content;
+  
+  // Strategy 1: Look for JSON object
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
-    content = jsonMatch[0];
+    jsonContent = jsonMatch[0];
   } else {
-    console.error("[Backboard] No JSON object found in response!");
-    console.error("[Backboard] Full content:", content);
+    // Strategy 2: Maybe it's wrapped in text - try to find the JSON part
+    const jsonStart = content.indexOf('{');
+    const jsonEnd = content.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+      jsonContent = content.substring(jsonStart, jsonEnd + 1);
+      console.log("[Backboard] Extracted JSON from wrapped text");
+    } else {
+      // Strategy 3: Maybe Backboard returned plain text, not JSON
+      console.error("[Backboard] ⚠️ No JSON found - Backboard may have returned plain text");
+      console.error("[Backboard] Full content:", content);
+      // Don't throw yet - try to parse anyway
+      jsonContent = content;
+    }
   }
+  
+  content = jsonContent;
 
   try {
     const parsed = JSON.parse(content);
@@ -348,30 +379,33 @@ Analyze this content and return the JSON response.`;
         confidence: Math.max(0, Math.min(1, m.confidence || 0.5)),
       })),
     };
-  } catch (e) {
-    console.error("[Backboard] Failed to parse analysis JSON:", e);
-    console.error("[Backboard] Raw content:", content.slice(0, 500));
-    // Return a fallback analysis
-    return {
-      claims: [{
-        text: ocrText.split(/[.!?\n]/)[0]?.trim() || ocrText.slice(0, 200),
-        verdict: "mixed",
-        confidence: 0.5,
-        explanation: "Automated analysis could not fully parse. Manual review recommended.",
-      }],
-      biasAssessment: {
-        politicalBias: 0,
-        sensationalism: 0.3,
-        overallBias: "center",
-        explanation: "Unable to fully assess bias.",
-      },
-      summary: "Analysis was completed but results may be limited. The extracted text has been preserved for review.",
-      modelConsensus: [
-        { modelName: "GPT-4", agrees: false, confidence: 0 },
-        { modelName: "Claude 3", agrees: false, confidence: 0 },
-        { modelName: "Gemini", agrees: false, confidence: 0 },
-      ],
-    };
+  } catch (e: any) {
+    console.error("[Backboard] ❌ Failed to parse analysis JSON");
+    console.error("[Backboard] Error:", e.message);
+    console.error("[Backboard] Error stack:", e.stack);
+    console.error("[Backboard] Content that failed:", content.slice(0, 1000));
+    console.error("[Backboard] Full response object:", JSON.stringify(resp).slice(0, 2000));
+    
+    // If content exists but isn't JSON, Backboard returned text instead of JSON
+    if (content.length > 50 && !content.trim().startsWith('{')) {
+      console.error("[Backboard] ⚠️ Backboard returned plain text, not JSON!");
+      console.error("[Backboard] This means the prompt didn't work - Backboard is ignoring JSON instruction");
+      
+      // Try to extract any useful info from the text response
+      // But still throw an error so we know something is wrong
+      throw new Error(
+        `Backboard returned plain text instead of JSON. The AI didn't follow the JSON format instruction. ` +
+        `Response preview: ${content.slice(0, 200)}... ` +
+        `Check Backboard prompt and ensure it's enforcing JSON-only responses.`
+      );
+    }
+    
+    // If we get here, it's a real parsing error
+    throw new Error(
+      `Failed to parse Backboard JSON response: ${e.message}. ` +
+      `Content preview: ${content.slice(0, 200)}. ` +
+      `Check Vercel logs for full response.`
+    );
   }
 }
 
