@@ -48,11 +48,23 @@ final class AppState: ObservableObject {
         screenshotImage = image
         isAnalyzing = true
         analysisError = nil
-        progressText = "Uploading screenshot…"
+        progressText = "Extracting text from image…"
 
         Task {
             do {
-                progressText = "Analyzing with AI…"
+                // Simulate progress updates (actual progress comes from backend)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    self.progressText = "Searching for sources…"
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    self.progressText = "Analyzing with AI…"
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    self.progressText = "Calculating trust score…"
+                }
+                
                 let result = try await api.analyzeImage(image)
                 self.analysisResult = result
                 self.imageUrl = result.imageUrl

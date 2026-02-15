@@ -245,7 +245,7 @@ struct HomeView: View {
         .zIndex(100)
     }
 
-    // MARK: - Loading Overlay
+    // MARK: - Loading Overlay (Enhanced with Progress Steps)
 
     private var loadingOverlay: some View {
         ZStack {
