@@ -14,8 +14,12 @@ struct VerifyShotApp: App {
                 .environmentObject(appState)
                 .environmentObject(screenshotDetector)
                 .onAppear {
+                    print("🚀 [VerifyShotApp] App appeared, setting up...")
+                    
                     // Request photo library access
-                    PHPhotoLibrary.requestAuthorization(for: .readWrite) { _ in }
+                    PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                        print("📷 [VerifyShotApp] Photo library permission: \(status.rawValue)")
+                    }
 
                     // Request notification permission
                     ScreenshotDetector.requestNotificationPermission()
@@ -24,14 +28,12 @@ struct VerifyShotApp: App {
                     // Pass appState to AppDelegate for notification handling
                     appDelegate.appState = appState
 
-                    // Start listening for screenshots
+                    // Start listening for screenshots (only once, not in init)
                     screenshotDetector.startListening()
                 }
-                // When user taps the push notification, pendingAnalysisFromNotification
-                // becomes true and ScreenshotDetector fetches the latest screenshot.
-                // Once latestScreenshot updates, auto-analyze it.
                 .onChange(of: screenshotDetector.pendingAnalysisFromNotification) { pending in
                     if pending, let img = screenshotDetector.latestScreenshot {
+                        print("📸 [VerifyShotApp] Auto-analyzing screenshot from notification tap")
                         screenshotDetector.pendingAnalysisFromNotification = false
                         screenshotDetector.latestScreenshot = nil
                         appState.analyzeScreenshot(img)
@@ -50,6 +52,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        print("🚀 [AppDelegate] App launched")
         UNUserNotificationCenter.current().delegate = self
         return true
     }
@@ -61,6 +64,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        print("📲 [AppDelegate] Notification received in foreground")
         // Show banner + sound even when app is in foreground
         completionHandler([.banner, .sound])
     }
@@ -72,12 +76,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        print("👆 [AppDelegate] Notification tapped")
         let actionIdentifier = response.actionIdentifier
         let categoryIdentifier = response.notification.request.content.categoryIdentifier
 
         if categoryIdentifier == "SCREENSHOT_DETECTED" {
             if actionIdentifier == UNNotificationDefaultActionIdentifier ||
                actionIdentifier == "ANALYZE_ACTION" {
+                print("✅ [AppDelegate] Analyzing screenshot from notification tap")
                 Task { @MainActor in
                     await appState?.analyzeLatestScreenshot()
                 }
