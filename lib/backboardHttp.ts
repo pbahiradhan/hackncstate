@@ -624,19 +624,21 @@ export async function saveAnalysisToMemory(
 //  OCR Summary — Describes what the screenshot says
 //  Runs in parallel with claims + search to avoid delay.
 //  This lets users gauge OCR accuracy at a glance.
+//  MAX 2 sentences.
 // ──────────────────────────────────────────────
 
 export async function generateOCRSummary(ocrText: string): Promise<string> {
   try {
+    // NO curly braces — Backboard templates them
     const systemPrompt = [
-      "You summarize screenshot text in 2-3 sentences.",
+      "You summarize screenshot text in exactly 1-2 sentences.",
       "Describe WHAT the screenshot says — the topic, key points, and source if visible.",
       "Do NOT judge whether the content is true or false.",
       "Just describe the content factually so the user can gauge OCR accuracy.",
-      "Be concise. Do not add any preamble like 'The screenshot says' — just give the summary.",
+      "Be concise. No preamble. Maximum 2 sentences.",
     ].join("\n");
 
-    const assistantId = await getOrCreateAssistant("VerifyShot-Summarizer-v1", systemPrompt);
+    const assistantId = await getOrCreateAssistant("VerifyShot-Summarizer-v2", systemPrompt);
 
     const threadRes = await fetch(`${BASE_URL}/assistants/${assistantId}/threads`, {
       method: "POST",
@@ -652,7 +654,7 @@ export async function generateOCRSummary(ocrText: string): Promise<string> {
     const threadId = thread.thread_id;
 
     const formData = new URLSearchParams();
-    formData.append("content", `Summarize this screenshot text in 2-3 sentences:\n\n${ocrText.slice(0, 1500)}`);
+    formData.append("content", `Summarize this screenshot text in 1-2 sentences only:\n\n${ocrText.slice(0, 1500)}`);
     formData.append("stream", "false");
     formData.append("memory", "Off");
     formData.append("llm_provider", "openai");
@@ -670,9 +672,12 @@ export async function generateOCRSummary(ocrText: string): Promise<string> {
 
     const resp = (await messageRes.json()) as any;
     const content = resp.content || resp.message?.content || "";
-    const summary = content.trim();
+    let summary = content.trim();
 
+    // Enforce max 2 sentences
     if (summary && summary.length > 10) {
+      const sentences = summary.match(/[^.!?]+[.!?]+/g) || [summary];
+      summary = sentences.slice(0, 2).join(" ").trim();
       console.log(`[Summarizer] ✅ Generated summary (${summary.length} chars)`);
       return summary;
     }
@@ -695,17 +700,24 @@ export interface ExtractedClaim {
 }
 
 export async function extractClaims(ocrText: string): Promise<ExtractedClaim[]> {
+  // ═══════════════════════════════════════════
+  // NO curly braces! Backboard Python .format()
+  // eats them. Describe format in plain English.
+  // ═══════════════════════════════════════════
   const systemPrompt = [
-    "You are a claim extraction API.",
-    "Extract 1-3 factual claims from the provided text.",
-    "Return ONLY a JSON array of claim objects.",
-    "Each claim object has one key: \"text\" (string).",
-    "No markdown, no code blocks, no explanation.",
-    "Example format: [{\"text\": \"claim 1\"}, {\"text\": \"claim 2\"}]",
-    "Start with [ and end with ]. Nothing else.",
+    "You are a claim extraction API that reads screenshot text.",
+    "Extract 1-3 specific, verifiable factual claims from the provided text.",
+    "Each claim MUST be a concrete statement that can be fact-checked against web sources.",
+    "Use the EXACT wording and details from the text — include names, numbers, dates, and quotes.",
+    "Do NOT invent claims, generalize, or paraphrase loosely.",
+    "Do NOT use vague or generic claims like 'Breaking News' or topic labels.",
+    "Return ONLY a valid JSON array of objects.",
+    "Each object must have exactly one key called \"text\" with the claim as a string.",
+    "No markdown, no code blocks, no explanation, no extra text.",
+    "Start your response with the opening bracket and end with the closing bracket.",
   ].join("\n");
 
-  const assistantId = await getOrCreateAssistant("VerifyShot-ClaimExtractor-v1", systemPrompt);
+  const assistantId = await getOrCreateAssistant("VerifyShot-ClaimExtractor-v4", systemPrompt);
 
   const threadRes = await fetch(`${BASE_URL}/assistants/${assistantId}/threads`, {
     method: "POST",
@@ -791,7 +803,9 @@ export async function extractClaims(ocrText: string): Promise<ExtractedClaim[]> 
 }
 
 // ──────────────────────────────────────────────
-//  Multi-Model Verification (3 models in parallel)
+//  Multi-Model Verification (2 models in parallel)
+//  Simplified: GPT-4o + Claude 3.5 Sonnet
+//  Fewer calls = faster + more reliable
 // ──────────────────────────────────────────────
 
 export interface ModelVerification {
@@ -810,21 +824,28 @@ export async function verifyClaimMultiModel(
     ? sources.map((s, i) => `[${i + 1}] ${s.title} (${s.domain}): ${s.snippet}`).join("\n")
     : "No sources available.";
 
+  // ═══════════════════════════════════════════
+  // NO curly braces! Backboard Python .format()
+  // eats them. Describe format in plain English.
+  // ═══════════════════════════════════════════
   const systemPrompt = [
     "You are a fact-checking API.",
     "Analyze the claim against the provided sources.",
-    "Return ONLY a JSON object with:",
+    "Return ONLY a valid JSON object with exactly three keys:",
     "- \"verdict\" (string): one of \"likely_true\", \"mixed\", or \"likely_misleading\"",
     "- \"confidence\" (number): decimal between 0.0 and 1.0",
-    "- \"reasoning\" (string): 2-3 sentences explaining your verdict",
+    "- \"reasoning\" (string): 1-2 sentences explaining your verdict based on the sources",
+    "",
     "Verdict rules:",
-    "- \"likely_true\": confidence 0.7-1.0, claim is supported by credible sources",
-    "- \"mixed\": confidence 0.4-0.7, conflicting or insufficient evidence",
-    "- \"likely_misleading\": confidence 0.0-0.4, contradicts sources or lacks evidence",
+    "- \"likely_true\" means confidence 0.7-1.0 and the claim is supported by credible sources",
+    "- \"mixed\" means confidence 0.4-0.7 with conflicting or insufficient evidence",
+    "- \"likely_misleading\" means confidence below 0.4 and the claim contradicts sources",
+    "",
     "Use REAL confidence values based on evidence. Do NOT default to 0.5.",
-    "Start with { and end with }. Nothing else.",
+    "CRITICAL: Start your response with the opening brace of the JSON object and end with the closing brace. Nothing else.",
   ].join("\n");
 
+  // User messages are NOT templated — braces are safe here
   const userMessage = `CLAIM TO VERIFY:
 "${claimText}"
 
@@ -833,18 +854,17 @@ ${srcBlock}
 
 Analyze this claim against the sources. Return your verdict as JSON.`;
 
-  // Run 3 models in parallel
+  // Run 2 models in parallel (simplified from 3 for speed + reliability)
   const models = [
     { provider: "openai", name: "gpt-4o", displayName: "GPT-4o" },
     { provider: "anthropic", name: "claude-3-5-sonnet-20241022", displayName: "Claude 3.5 Sonnet" },
-    { provider: "google", name: "gemini-1.5-pro", displayName: "Gemini 1.5 Pro" },
   ];
 
   const verifications = await Promise.all(
     models.map(async (model) => {
       try {
         const assistantId = await getOrCreateAssistant(
-          `VerifyShot-Verifier-${model.displayName.replace(/\s+/g, "-")}-v1`,
+          `VerifyShot-Verifier-${model.displayName.replace(/\s+/g, "-")}-v2`,
           systemPrompt
         );
 
@@ -887,32 +907,48 @@ Analyze this claim against the sources. Return your verdict as JSON.`;
           content = content.replace(/```(?:json)?\n?/g, "").replace(/```\s*$/g, "").trim();
         }
 
+        // Handle Python-escaped quotes
+        content = content.replace(/\\'/g, "'");
+
         const firstBrace = content.indexOf("{");
         const lastBrace = content.lastIndexOf("}");
         
         if (firstBrace === -1 || lastBrace === -1) {
-          throw new Error(`No JSON object found: ${content.slice(0, 200)}`);
+          throw new Error(`No JSON object found in response`);
         }
 
-        const jsonStr = content.substring(firstBrace, lastBrace + 1);
-        const parsed = JSON.parse(jsonStr) as any;
+        let jsonStr = content.substring(firstBrace, lastBrace + 1);
+        // Fix trailing commas
+        jsonStr = jsonStr.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+
+        let parsed: any;
+        try {
+          parsed = JSON.parse(jsonStr);
+        } catch {
+          // Try single→double quotes
+          parsed = JSON.parse(jsonStr.replace(/'/g, '"'));
+        }
+
+        console.log(`[Verifier] ✅ ${model.displayName}: ${parsed.verdict} (${parsed.confidence})`);
 
         return {
           modelName: model.displayName,
           modelProvider: model.provider,
-          verdict: (parsed.verdict || "mixed") as "likely_true" | "mixed" | "likely_misleading",
+          verdict: (parsed.verdict === "likely_true" || parsed.verdict === "mixed" || parsed.verdict === "likely_misleading")
+            ? parsed.verdict as "likely_true" | "mixed" | "likely_misleading"
+            : "mixed" as const,
           confidence: Math.max(0, Math.min(1, parsed.confidence || 0.5)),
           reasoning: parsed.reasoning || "Analysis completed.",
         };
       } catch (err: any) {
-        console.error(`[Backboard] Verification failed for ${model.displayName}:`, err.message);
-        // Return default on error
+        console.error(`[Verifier] ❌ ${model.displayName} failed:`, err.message);
+        // Return default on error — don't expose error message to user
         return {
           modelName: model.displayName,
           modelProvider: model.provider,
           verdict: "mixed" as const,
           confidence: 0.5,
-          reasoning: `Error: ${err.message}`,
+          reasoning: "Unable to verify this claim with this model.",
         };
       }
     })

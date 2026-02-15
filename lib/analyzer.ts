@@ -158,8 +158,8 @@ export async function analyzeImage(
     console.log(`[Orchestrator][${jobId}] ✅ Quality gate passed: ${highQualitySources.length} high-quality sources out of ${sources.length} total`);
   }
 
-  // ── Step 4: Multi-Model Verification (3 models × N claims, all parallel, ~5-8s) ──
-  console.log(`[Orchestrator][${jobId}] Step 4: Multi-model verification (${extractedClaims.length} claim(s) × 3 models, parallel)…`);
+  // ── Step 4: Multi-Model Verification (2 models × N claims, all parallel, ~5-8s) ──
+  console.log(`[Orchestrator][${jobId}] Step 4: Multi-model verification (${extractedClaims.length} claim(s) × 2 models, parallel)…`);
   
   const allVerifications: ModelVerification[][] = await Promise.all(
     extractedClaims.map((claim) => verifyClaimMultiModel(claim.text, sources))
@@ -192,17 +192,22 @@ export async function analyzeImage(
   const claims: Claim[] = extractedClaims.map((extracted, claimIdx) => {
     const verifications = allVerifications[claimIdx];
     
-    // Calculate real consensus
+    // Calculate real consensus (2 models: GPT-4o + Claude 3.5 Sonnet)
     const trueVerdicts = verifications.map(v => v.verdict);
     const likelyTrueCount = trueVerdicts.filter(v => v === "likely_true").length;
     const likelyMisleadingCount = trueVerdicts.filter(v => v === "likely_misleading").length;
-    const mixedCount = trueVerdicts.filter(v => v === "mixed").length;
     
-    // Determine final verdict based on majority
+    // With 2 models: both agree → clear verdict, disagree → mixed
     let finalVerdict: "likely_true" | "mixed" | "likely_misleading";
-    if (likelyTrueCount >= 2) finalVerdict = "likely_true";
-    else if (likelyMisleadingCount >= 2) finalVerdict = "likely_misleading";
-    else finalVerdict = "mixed";
+    if (likelyTrueCount === 2) finalVerdict = "likely_true";
+    else if (likelyMisleadingCount === 2) finalVerdict = "likely_misleading";
+    else if (likelyTrueCount === 1 && likelyMisleadingCount === 1) finalVerdict = "mixed";
+    else {
+      // One model said "mixed" — lean toward the other model's verdict
+      if (likelyTrueCount === 1) finalVerdict = "likely_true";
+      else if (likelyMisleadingCount === 1) finalVerdict = "likely_misleading";
+      else finalVerdict = "mixed"; // both said mixed
+    }
     
     // Average confidence across models
     const avgConfidence = verifications.reduce((s, v) => s + v.confidence, 0) / verifications.length;
@@ -222,9 +227,11 @@ export async function analyzeImage(
     const score = calculateTrustScore(sources, avgConfidence, bp, modelAgreement);
     
     // Generate explanation from model reasoning
+    const agreeCount = verifications.filter(v => v.verdict === finalVerdict).length;
     const explanations = verifications.map(v => v.reasoning).filter(Boolean);
+    const consensusLabel = agreeCount === verifications.length ? "Both models agree" : "Models disagree";
     const mainExplanation = explanations.length > 0
-      ? `${explanations[0]} (${likelyTrueCount}/${verifications.length} models agree with "${finalVerdict}" verdict)`
+      ? `${explanations[0]} (${consensusLabel}: ${agreeCount}/${verifications.length} "${finalVerdict}")`
       : `Analysis by ${verifications.length} independent AI models.`;
 
     console.log(`[Orchestrator][${jobId}] Claim ${claimIdx + 1}:`, {
@@ -232,7 +239,7 @@ export async function analyzeImage(
       verdict: finalVerdict,
       confidence: avgConfidence.toFixed(2),
       calculatedScore: score,
-      modelAgreement: `${likelyTrueCount + likelyMisleadingCount}/${verifications.length}`,
+      modelAgreement: `${agreeCount}/${verifications.length}`,
     });
 
     return {
@@ -292,5 +299,8 @@ function generateSummary(
   const biasDesc = biasSignals.overallBias === "center" ? "relatively neutral"
     : biasSignals.overallBias.replace("_", " ");
 
-  return `${contentDescription} — Verdict: ${verdictDesc} (${sourceCount} source(s), ${biasDesc} framing).`;
+  // Build full summary, then cap at 2 sentences
+  const full = `${contentDescription} — Verdict: ${verdictDesc} (${sourceCount} source(s), ${biasDesc} framing).`;
+  const sentences = full.match(/[^.!?]+[.!?]+/g) || [full];
+  return sentences.slice(0, 2).join(" ").trim();
 }

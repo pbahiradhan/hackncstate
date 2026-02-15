@@ -26,8 +26,8 @@ struct ModelConsensusSection: View {
                 }
             }
 
-            // Model cards in a grid
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            // Model cards in a grid (2 models: GPT-4o + Claude)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(verdicts) { verdict in
                     modelCard(verdict)
                 }
