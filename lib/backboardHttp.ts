@@ -8,7 +8,7 @@ import { searchSources, getWebSearchTool } from "./search";
 
 const BASE_URL = "https://app.backboard.io/api";
 
-function getHeaders(): Record<string, string> {
+function getHeaders(contentType: string = "application/json"): Record<string, string> {
   const key = process.env.BACKBOARD_API_KEY;
   if (!key) {
     throw new Error("BACKBOARD_API_KEY not set in environment variables");
@@ -18,7 +18,7 @@ function getHeaders(): Record<string, string> {
   }
   return {
     "X-API-Key": key,
-    "Content-Type": "application/json",
+    "Content-Type": contentType,
   };
 }
 
@@ -183,10 +183,7 @@ Analyze this content and return the JSON response.`;
   
   const messageRes = await fetch(`${BASE_URL}/threads/${threadId}/messages`, {
     method: "POST",
-    headers: {
-      ...getHeaders(),
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
+    headers: getHeaders("application/x-www-form-urlencoded"),
     body: formData.toString(),
   });
 
@@ -330,10 +327,7 @@ export async function chatAboutJob(
     
     const messageRes = await fetch(`${BASE_URL}/threads/${threadId}/messages`, {
       method: "POST",
-      headers: {
-        ...getHeaders(),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers: getHeaders("application/x-www-form-urlencoded"),
       body: formData.toString(),
     });
 
