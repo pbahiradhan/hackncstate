@@ -6,42 +6,58 @@
 import { Source, BiasSignals, ModelVerdict, Claim } from "./types";
 import { searchSources, getWebSearchTool } from "./search";
 
-// Import Backboard SDK using require() for CommonJS compatibility
-// Vercel serverless functions run in Node.js which supports require()
+// Import Backboard SDK - it's ES module only, so we need to use dynamic import
+// Vercel serverless functions support ES modules via dynamic import()
 let BackboardClientClass: any = null;
 
-function loadBackboardSDK(): any {
+async function loadBackboardSDK(): Promise<any> {
   if (BackboardClientClass) {
     return BackboardClientClass;
   }
 
   try {
-    // Use require() for CommonJS compatibility
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const module = require("backboard-sdk");
-    BackboardClientClass = module.BackboardClient || module.default?.BackboardClient || module;
+    // Try dynamic import - this should work in Vercel's Node.js runtime
+    // The SDK is ES module only, but dynamic import() works in CommonJS contexts
+    const module = await import("backboard-sdk");
+    BackboardClientClass = (module as any).BackboardClient || (module as any).default?.BackboardClient;
     
     if (!BackboardClientClass || typeof BackboardClientClass !== "function") {
-      throw new Error("BackboardClient not found in SDK module. Module structure: " + JSON.stringify(Object.keys(module)));
+      throw new Error("BackboardClient not found in SDK module. Available exports: " + JSON.stringify(Object.keys(module || {})));
     }
     
     return BackboardClientClass;
   } catch (err: any) {
-    // If require fails, provide helpful error message
-    if (err.code === "MODULE_NOT_FOUND") {
+    // Provide helpful error message
+    if (err.code === "MODULE_NOT_FOUND" || err.message?.includes("Cannot find module")) {
       throw new Error(`Backboard SDK not found. Run: npm install backboard-sdk. Error: ${err.message}`);
     }
-    if (err.message?.includes("exports")) {
-      throw new Error(`Backboard SDK module resolution failed. This is a known issue with ES modules in Vercel. Try: npm install backboard-sdk@latest. Error: ${err.message}`);
+    if (err.message?.includes("exports") || err.message?.includes("No \"exports\"")) {
+      // This is a known Vercel bundling issue with ES-only modules
+      throw new Error(
+        `Backboard SDK module resolution failed. The SDK is ES module only and Vercel's bundler has issues with it. ` +
+        `Error: ${err.message}. ` +
+        `Workaround: You may need to configure Vercel to use ES modules or use Backboard's HTTP API directly.`
+      );
     }
     throw new Error(`Failed to load Backboard SDK: ${err.message}`);
   }
 }
 
 let _client: any | null = null;
+let _clientPromise: Promise<any> | null = null;
 
-function bb(): any {
-  if (!_client) {
+async function bb(): Promise<any> {
+  if (_client) {
+    return _client;
+  }
+  
+  // If we're already loading, wait for that promise
+  if (_clientPromise) {
+    return _clientPromise;
+  }
+  
+  // Start loading
+  _clientPromise = (async () => {
     const key = process.env.BACKBOARD_API_KEY;
     if (!key) {
       throw new Error("BACKBOARD_API_KEY not set in environment variables");
@@ -50,13 +66,16 @@ function bb(): any {
       throw new Error("BACKBOARD_API_KEY appears invalid (too short)");
     }
     try {
-      const BackboardClient = loadBackboardSDK();
+      const BackboardClient = await loadBackboardSDK();
       _client = new BackboardClient({ apiKey: key });
+      return _client;
     } catch (err: any) {
+      _clientPromise = null; // Reset on error so we can retry
       throw new Error(`Failed to initialize Backboard client: ${err.message}`);
     }
-  }
-  return _client;
+  })();
+  
+  return _clientPromise;
 }
 
 // Cache assistant IDs so we don't recreate them on every call
@@ -69,7 +88,7 @@ async function getOrCreateAssistant(
 ): Promise<string> {
   if (assistantCache[name]) return assistantCache[name];
   try {
-    const client = bb();
+    const client = await bb();
     const asst = await client.createAssistant({
       name,
       systemPrompt,
@@ -151,7 +170,7 @@ Rules:
 - Be honest about uncertainty`;
 
   const id = await getOrCreateAssistant("VerifyShot-Analyzer-v2", systemPrompt);
-  const backboardClient = bb();
+  const backboardClient = await bb();
   const thread = await backboardClient.createThread(id);
 
   const userMessage = `SCREENSHOT TEXT:
@@ -318,7 +337,7 @@ Be thorough and analytical. Use markdown formatting.`;
   if (!threadId) {
     console.log(`[Backboard] Creating new thread for ${threadKey}…`);
     try {
-      const chatClient = bb();
+      const chatClient = await bb();
       const thread = await chatClient.createThread(id);
       threadId = thread.threadId;
       chatThreads[threadKey] = threadId;
@@ -330,9 +349,9 @@ Be thorough and analytical. Use markdown formatting.`;
 
   console.log(`[Backboard] Chat (${mode}): sending message…`);
   let resp: any;
-  try {
-    const chatClient = bb();
-    resp = await chatClient.addMessage({
+    try {
+      const chatClient = await bb();
+      resp = await chatClient.addMessage({
         threadId,
         content: userMessage,
         stream: false,
@@ -368,7 +387,7 @@ Be thorough and analytical. Use markdown formatting.`;
 
       if (toolOutputs.length > 0) {
         try {
-          const toolClient = bb();
+          const toolClient = await bb();
           const finalResp = await toolClient.submitToolOutputs({
           threadId,
           runId: resp.runId,
