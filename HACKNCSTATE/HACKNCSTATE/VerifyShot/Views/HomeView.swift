@@ -333,23 +333,18 @@ struct HomeView: View {
                 // Retry with a slight delay - sometimes the system needs a moment
                 try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
                 
-                do {
-                    if let data = try await item.loadTransferable(type: Data.self),
+                // Retry loading
+            if let data = try? await item.loadTransferable(type: Data.self),
                let image = UIImage(data: data) {
-                        await MainActor.run {
-                            appState.analyzeScreenshot(image)
-                        }
-                    } else {
-                        await MainActor.run {
-                            appState.analysisError = "Could not load image. Please try selecting the photo again."
-                        }
+                    await MainActor.run {
+                        appState.analyzeScreenshot(image)
                     }
-                } catch retryError {
+                } else {
                     // If retry also fails, show user-friendly error
                     await MainActor.run {
                         appState.analysisError = "Unable to load image. The bookmark error is usually harmless - please try selecting the photo again."
                     }
-                    print("[HomeView] Retry also failed: \(retryError.localizedDescription)")
+                    print("[HomeView] Retry also failed")
                 }
             }
         }
