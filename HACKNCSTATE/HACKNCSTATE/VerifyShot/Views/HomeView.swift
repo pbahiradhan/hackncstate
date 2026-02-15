@@ -313,10 +313,46 @@ struct HomeView: View {
 
     private func loadPhoto(from item: PhotosPickerItem) {
         Task {
-            if let data = try? await item.loadTransferable(type: Data.self),
-               let image = UIImage(data: data) {
-                // Auto-analyze immediately
-                appState.analyzeScreenshot(image)
+            do {
+                // Try loading as Data first (most reliable)
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        appState.analyzeScreenshot(image)
+                    }
+                    return
+                }
+                
+                // Fallback: Try loading as UIImage directly
+                if let image = try? await item.loadTransferable(type: UIImage.self) {
+                    await MainActor.run {
+                        appState.analyzeScreenshot(image)
+                    }
+                    return
+                }
+                
+                // If both fail, show error
+                await MainActor.run {
+                    appState.analysisError = "Failed to load image. Please try selecting the photo again."
+                }
+                print("[HomeView] Failed to load photo from PhotosPickerItem")
+            } catch {
+                // The bookmark error is often harmless - try to continue anyway
+                print("[HomeView] Photo loading error (may be harmless): \(error.localizedDescription)")
+                
+                // Try one more time with a slight delay
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        appState.analyzeScreenshot(image)
+                    }
+                } else {
+                    await MainActor.run {
+                        appState.analysisError = "Could not load image. The bookmark error is usually harmless - please try again."
+                    }
+                }
             }
         }
     }

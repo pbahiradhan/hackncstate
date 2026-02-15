@@ -6,6 +6,8 @@
     <string>VerifyShot needs access to your photos to detect and analyze screenshots.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>VerifyShot needs access to save analysis results.</string>
+    <key>NSPhotoLibraryReadWriteUsageDescription</key>
+    <string>VerifyShot needs access to read photos for analysis.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
